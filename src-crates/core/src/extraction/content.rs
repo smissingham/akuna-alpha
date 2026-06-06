@@ -152,8 +152,8 @@ fn preferred_omniparse_mime(file_type: &DetectedFileType) -> &str {
     }
 }
 
-impl From<burn_magika::Error> for FileExtractionError {
-    fn from(source: burn_magika::Error) -> Self {
+impl From<akuna_infer::Error> for FileExtractionError {
+    fn from(source: akuna_infer::Error) -> Self {
         Self::ExtractionEngine {
             engine: "magika",
             source: Box::new(source),

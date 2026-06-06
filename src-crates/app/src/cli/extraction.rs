@@ -21,6 +21,7 @@ pub(crate) struct ExtractCommand {
 }
 
 impl ExtractCommand {
+    /// Runs file extraction and prints the result.
     pub(crate) async fn run(self) -> Result<()> {
         ak_info!("extracting data from {}", self.file.display());
 

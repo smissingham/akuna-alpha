@@ -4,7 +4,7 @@
 pub mod storage;
 
 /// Knowledge graph domain types.
-pub mod knowledge;
+pub mod structs;
 
 /// Graph traits and derive macros.
-pub mod primitives;
+pub mod traits;

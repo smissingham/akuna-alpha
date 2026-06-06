@@ -56,5 +56,5 @@ Use `full` to enable all feature-gated APIs
 
 | Crate                                                         | Purpose                                                                                                             |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| [`burn-magika`](https://github.com/akunasoftware/burn-magika) | Rust native [Magika](https://github.com/google/magika) file type inference built on [Rust Burn](https://burn.dev/). |
-| [`burn-embed`](https://github.com/akunasoftware/burn-embed)   | Rust native text embedding models built on [Rust Burn](https://burn.dev/).                                          |
+| [`akuna-infer`](https://github.com/akunasoftware/akuna-infer) | Rust native [Magika](https://github.com/google/magika) file type inference built on [Rust Burn](https://burn.dev/). |
+| [`akuna-embed`](https://github.com/akunasoftware/akuna-embed) | Rust native text embedding models built on [Rust Burn](https://burn.dev/).                                          |

@@ -40,7 +40,7 @@ async fn detect_file_type(
     file_path: &Path,
 ) -> Result<DetectedFileType, FileExtractionError> {
     let device = burn_wgpu::WgpuDevice::DefaultDevice;
-    let mut magika = burn_magika::Session::<Wgpu>::new(&device)?;
+    let mut magika = akuna_infer::Session::<Wgpu>::new(&device)?;
     let type_info = magika.identify_file_async(file_path).await?.info();
 
     Ok(DetectedFileType {

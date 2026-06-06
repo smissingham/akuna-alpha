@@ -22,8 +22,8 @@ mod tests {
     use crate::{
         GraphError, GraphTarget,
         graph::{
-            primitives::{GraphDbContext, GraphEdge, GraphNode},
             storage::{GraphStorage, grafeo::GrafeoDbContext},
+            traits::{GraphDbContext, GraphEdge, GraphNode},
         },
     };
 

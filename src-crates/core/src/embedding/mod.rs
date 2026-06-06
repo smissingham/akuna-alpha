@@ -2,13 +2,13 @@ use anyhow::Result;
 use burn_wgpu::Wgpu;
 use tokio::sync::OnceCell;
 
-pub use burn_embed::{EmbeddingModel, TextEmbeddingOptions};
+pub use akuna_embed::{EmbeddingModel, TextEmbeddingOptions};
 
 /// Default backend for the shared text embedding model.
 pub type DefaultEmbeddingBackend = Wgpu;
 
 /// Default text embedding model type used by akuna.
-pub type TextEmbedding = burn_embed::TextEmbedding<DefaultEmbeddingBackend>;
+pub type TextEmbedding = akuna_embed::TextEmbedding<DefaultEmbeddingBackend>;
 
 static MODEL: OnceCell<TextEmbedding> = OnceCell::const_new();
 

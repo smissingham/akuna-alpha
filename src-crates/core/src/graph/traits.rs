@@ -1,4 +1,4 @@
-//! Graph primitives.
+//! Graph traits.
 
 use serde::{Serialize, de::DeserializeOwned};
 

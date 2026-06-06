@@ -1,0 +1,44 @@
+//! Command-line interface commands.
+
+mod extraction;
+mod indexing;
+mod serve;
+
+use akuna_core::tracing::{LOG_LEVELS, setup_tracing};
+use anyhow::Result;
+use clap::{Parser, Subcommand};
+
+#[derive(Parser)]
+#[command(version, about = "Command-line tools")]
+struct Cli {
+    #[arg(long, value_parser = LOG_LEVELS)]
+    log_level: Option<String>,
+
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Extract structured metadata & content from a file.
+    Extract(extraction::ExtractCommand),
+    /// Manage file indexing.
+    Index {
+        #[command(subcommand)]
+        command: indexing::IndexCommand,
+    },
+    /// Serve the local REST API.
+    Serve,
+}
+
+/// Runs the parsed CLI command.
+pub async fn run() -> Result<()> {
+    let cli = Cli::parse();
+    setup_tracing(cli.log_level.as_deref());
+
+    match cli.command {
+        Command::Extract(command) => command.run().await,
+        Command::Index { command } => command.run().await,
+        Command::Serve => serve::run().await,
+    }
+}

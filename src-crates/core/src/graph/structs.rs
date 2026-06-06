@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-use crate::graph::primitives::{GraphEdge, GraphNode};
+use crate::graph::traits::{GraphEdge, GraphNode};
 
 /// Flexible relationship between knowledge graph nodes.
 #[derive(Clone, Debug, GraphEdge, PartialEq, Eq, Deserialize, Serialize)]
-pub struct Relationship {
+pub struct Edge {
     /// Source node labels.
     #[graph(source_labels)]
     pub source_labels: Vec<String>,
@@ -24,7 +24,7 @@ pub struct Relationship {
 
 /// Flexible knowledge graph concept with caller-defined labels and metadata.
 #[derive(Clone, Debug, GraphNode, PartialEq, Deserialize, Serialize)]
-pub struct Concept {
+pub struct Node {
     /// Stable concept identifier within its labels.
     #[graph(id)]
     pub id: String,

@@ -7,8 +7,8 @@ use crate::{
     GraphError, GraphTarget, GraphWriteOperation,
     dirs::{AppDirType, get_app_dir},
     graph::{
-        primitives::{GraphDbContext, GraphEdge, GraphNode},
         storage::GraphStorage,
+        traits::{GraphDbContext, GraphEdge, GraphNode},
     },
 };
 

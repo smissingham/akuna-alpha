@@ -1,5 +1,6 @@
 [package]
 name = "akuna-core"
+description = "A wholistic suite of tools required for knowledge work from extraction, embedding, graphs and more."
 authors.workspace = true
 repository.workspace = true
 version.workspace = true
@@ -28,13 +29,13 @@ full = [
 extraction = [
   "chunking", 
   "dep:burn-wgpu", 
-  "dep:burn-magika", 
+  "dep:akuna-infer", 
   "dep:pdf_oxide", 
   "dep:office_oxide",
   "dep:omniparse",
   "dep:rbook"
 ]
-embedding = ["dep:burn-wgpu", "dep:burn-embed"]
+embedding = ["dep:burn-wgpu", "dep:akuna-embed"]
 graph = ["dep:akuna-core-macros", "dep:grafeo"]
 
 chunking = ["dep:memchunk"]
@@ -82,8 +83,10 @@ walkdir = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 serde = { workspace = true }
+serde_ignored = { workspace = true }
 serde_json = { workspace = true }
-akuna-core-macros = { path = "../core-macros", optional = true }
+serde_yaml = { workspace = true }
+akuna-core-macros = { path = "../core-macros", version = "0.2.0", optional = true }
 
 # extraction features
 pdf_oxide = { version = "0.3.30", optional = true, default-features = false }
@@ -93,8 +96,8 @@ rbook = { version = "0.7.7", optional = true, default-features = false }
 
 # ml features: (embedding, magika etc.)
 burn-wgpu = { version = "0.21.0-pre.3", optional = true, default-features = false, features = ["std", "webgpu"] }
-burn-magika = { git = "https://github.com/akunasoftware/burn-magika", optional = true }
-burn-embed = { git = "https://github.com/akunasoftware/burn-embed", optional = true }
+akuna-infer = { version = "0.1.0", optional = true }
+akuna-embed = { version = "0.1.0", optional = true }
 
 # graph: (storage, search etc.)
 grafeo = { version = "0.5.42", optional = true, default-features = false, features = ["embedded", "hybrid-search", "rdf", "text-index", "vector-index"] }

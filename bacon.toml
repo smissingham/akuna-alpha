@@ -30,6 +30,19 @@ command = [
 ]
 need_stdout = true
 
+[jobs.serve]
+command = [
+  "cargo",
+  "run",
+  "-p",
+  "akuna",
+  "--",
+  "--log-level",
+  "TRACE",
+  "serve"
+]
+
 [keybindings]
 shift-a = "job:all"
 shift-b = "job:bench"
+shift-s = "job:serve"

@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, LitStr, parse_macro_input};
 
-/// Derives `akuna_core::graph::primitives::GraphNode`.
+/// Derives `akuna_core::graph::traits::GraphNode`.
 ///
 /// Use `#[graph(node_type(name = "Name"))]` on fixed node types.
 /// Use `#[graph(id)]`, `#[graph(name)]`, `#[graph(description)]`, and `#[graph(metadata)]` on named fields.
@@ -17,7 +17,7 @@ pub fn derive_graph_node(input: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Derives `akuna_core::graph::primitives::GraphEdge`.
+/// Derives `akuna_core::graph::traits::GraphEdge`.
 ///
 /// Use `#[graph(source_labels)]`, `#[graph(source)]`,
 /// `#[graph(predicate)]`, `#[graph(target)]`, and
@@ -83,7 +83,7 @@ fn expand_graph_node(
         .map(|field| quote! { #field: description, });
 
     Ok(quote! {
-        impl #impl_generics akuna_core::graph::primitives::GraphNode for #name #type_generics #where_clause {
+        impl #impl_generics akuna_core::graph::traits::GraphNode for #name #type_generics #where_clause {
             type Metadata = #metadata_ty;
 
             fn labels(&self) -> Vec<&str> {
@@ -141,7 +141,7 @@ fn expand_graph_edge(
         input.generics.split_for_impl();
 
     Ok(quote! {
-        impl #impl_generics akuna_core::graph::primitives::GraphEdge for #name #type_generics #where_clause {
+        impl #impl_generics akuna_core::graph::traits::GraphEdge for #name #type_generics #where_clause {
             fn source_labels(&self) -> Vec<&str> {
                 self.#source_labels_field.iter().map(String::as_str).collect()
             }
