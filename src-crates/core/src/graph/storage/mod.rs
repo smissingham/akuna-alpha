@@ -14,10 +14,13 @@ pub enum GraphStorage {
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, time::SystemTime};
+    use std::{env, process::Command, sync::Arc, time::SystemTime};
 
     use serde::{Deserialize, Serialize};
-    use tokio::task::JoinSet;
+    use tokio::{
+        task::JoinSet,
+        time::{Duration, Instant, sleep},
+    };
 
     use crate::{
         GraphError, GraphTarget,
@@ -64,6 +67,13 @@ mod tests {
     const TOTAL_COUNT: usize = 30;
     const DELETE_EVERY: usize = 5;
     const UPSERT_EVERY: usize = 3;
+    const HAMMER_PROCESS_COUNT: usize = 4;
+    const HAMMER_NODES_PER_PROCESS: usize = 25;
+    const HAMMER_READ_PASSES: usize = 25;
+    const STRESS_PROCESS_COUNT: usize = 4;
+    const STRESS_NODES_PER_PROCESS: usize = 250;
+    const STRESS_READ_PASSES: usize = 250;
+    const HAMMER_CHILD_TIMEOUT: Duration = Duration::from_secs(60);
 
     macro_rules! graph_db_impls {
         ($tests:ident) => {
@@ -405,6 +415,162 @@ mod tests {
 
                     graph_db.destroy().expect("Failed to clean test db");
                 }
+
+                /// Multiple OS processes can read and write one persistent graph.
+                #[tokio::test]
+                async fn concurrency_multi_process() {
+                    run_concurrency_multi_process_hammer(
+                        HAMMER_PROCESS_COUNT,
+                        HAMMER_NODES_PER_PROCESS,
+                        HAMMER_READ_PASSES,
+                    )
+                    .await;
+                }
+
+                /// Stress test for shared persistent graph access across OS processes.
+                #[tokio::test]
+                #[ignore = "manual multiprocess persistence stress test"]
+                async fn concurrency_multi_process_stress() {
+                    run_concurrency_multi_process_hammer(
+                        STRESS_PROCESS_COUNT,
+                        STRESS_NODES_PER_PROCESS,
+                        STRESS_READ_PASSES,
+                    )
+                    .await;
+                }
+
+                async fn run_concurrency_multi_process_hammer(
+                    process_count: usize,
+                    nodes_per_process: usize,
+                    read_passes: usize,
+                ) {
+                    let db_name = db_name();
+                    let current_exe = env::current_exe()
+                        .expect("Failed to resolve current test binary");
+                    let mut children = (0..process_count)
+                        .map(|process_index| {
+                            Command::new(&current_exe)
+                                .arg("multiprocess_hammer_child")
+                                .env("AKUNA_GRAFEO_HAMMER_CHILD", "1")
+                                .env("AKUNA_GRAFEO_HAMMER_DB", &db_name)
+                                .env(
+                                    "AKUNA_GRAFEO_HAMMER_PROCESS",
+                                    process_index.to_string(),
+                                )
+                                .env(
+                                    "AKUNA_GRAFEO_HAMMER_PROCESS_COUNT",
+                                    process_count.to_string(),
+                                )
+                                .env(
+                                    "AKUNA_GRAFEO_HAMMER_NODES",
+                                    nodes_per_process.to_string(),
+                                )
+                                .env(
+                                    "AKUNA_GRAFEO_HAMMER_READS",
+                                    read_passes.to_string(),
+                                )
+                                .spawn()
+                                .expect("Failed to spawn hammer child")
+                        })
+                        .collect::<Vec<_>>();
+
+                    for child in &mut children {
+                        let status = wait_for_child(child).await;
+
+                        assert!(
+                            status.success(),
+                            "hammer child failed: {status}"
+                        );
+                    }
+
+                    let graph_db = $new_persistent(db_name)
+                        .expect("Failed to open hammer verification graph db");
+
+                    for process_index in 0..process_count {
+                        for node_index in 0..nodes_per_process {
+                            let expected =
+                                hammer_node(process_index, node_index);
+                            let retrieved = graph_db
+                                .get_node::<TestNode>(labels(), &expected.id)
+                                .expect("Failed to read hammer node");
+
+                            assert_eq!(retrieved, Some(expected));
+                        }
+                    }
+
+                    graph_db.destroy().expect("Failed to clean hammer db");
+                }
+
+                /// Child entrypoint for OS process hammer test.
+                #[tokio::test]
+                async fn multiprocess_hammer_child() {
+                    if env::var("AKUNA_GRAFEO_HAMMER_CHILD").as_deref()
+                        != Ok("1")
+                    {
+                        return;
+                    }
+
+                    let db_name = env::var("AKUNA_GRAFEO_HAMMER_DB")
+                        .expect("Missing hammer db name");
+                    let process_index = env::var("AKUNA_GRAFEO_HAMMER_PROCESS")
+                        .expect("Missing hammer process index")
+                        .parse::<usize>()
+                        .expect("Invalid hammer process index");
+                    let nodes_per_process = hammer_env_usize(
+                        "AKUNA_GRAFEO_HAMMER_NODES",
+                        HAMMER_NODES_PER_PROCESS,
+                    );
+                    let read_passes = hammer_env_usize(
+                        "AKUNA_GRAFEO_HAMMER_READS",
+                        HAMMER_READ_PASSES,
+                    );
+                    let graph_db = Arc::new(
+                        $new_persistent(db_name)
+                            .expect("Failed to open hammer child graph db"),
+                    );
+                    let mut work = JoinSet::new();
+
+                    for node_index in 0..nodes_per_process {
+                        let graph_db = Arc::clone(&graph_db);
+
+                        work.spawn(async move {
+                            let item = hammer_node(process_index, node_index);
+
+                            graph_db.put_node(&item)
+                        });
+                    }
+
+                    finish(work).await;
+
+                    let mut work = JoinSet::new();
+
+                    for read_pass in 0..read_passes {
+                        let graph_db = Arc::clone(&graph_db);
+
+                        work.spawn(async move {
+                            let node_index = read_pass % nodes_per_process;
+                            let expected =
+                                hammer_node(process_index, node_index);
+                            let retrieved = graph_db
+                                .get_node::<TestNode>(labels(), &expected.id)?;
+
+                            assert_eq!(retrieved, Some(expected));
+
+                            Ok(())
+                        });
+                    }
+
+                    finish(work).await;
+
+                    let graph_db = match Arc::try_unwrap(graph_db) {
+                        Ok(graph_db) => graph_db,
+                        Err(_) => panic!("Hammer child graph db still shared"),
+                    };
+
+                    graph_db
+                        .close()
+                        .expect("Failed to close hammer child graph db");
+                }
             }
         };
     }
@@ -522,6 +688,34 @@ mod tests {
         }
     }
 
+    async fn wait_for_child(
+        child: &mut std::process::Child,
+    ) -> std::process::ExitStatus {
+        let deadline = Instant::now() + HAMMER_CHILD_TIMEOUT;
+
+        loop {
+            if let Some(status) =
+                child.try_wait().expect("Failed to wait for hammer child")
+            {
+                return status;
+            }
+
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                panic!("Timed out waiting for hammer child");
+            }
+
+            sleep(Duration::from_millis(25)).await;
+        }
+    }
+
+    fn hammer_env_usize(name: &str, default: usize) -> usize {
+        env::var(name)
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(default)
+    }
+
     fn expected_node(index: usize) -> Option<TestNode> {
         if index < EXISTING_COUNT && index.is_multiple_of(DELETE_EVERY) {
             return None;
@@ -552,6 +746,24 @@ mod tests {
 
     fn labels_vec() -> Vec<String> {
         labels().iter().map(|label| (*label).to_string()).collect()
+    }
+
+    fn hammer_node(process_index: usize, node_index: usize) -> TestNode {
+        TestNode {
+            id: hammer_node_id(process_index, node_index),
+            labels: labels_vec(),
+            name: format!("hammer-{process_index}-{node_index}"),
+            description: Some(format!(
+                "hammer-val-{process_index}-{node_index}"
+            )),
+            metadata: Some(TestMetadata {
+                val: format!("hammer-extra-{process_index}-{node_index}"),
+            }),
+        }
+    }
+
+    fn hammer_node_id(process_index: usize, node_index: usize) -> String {
+        format!("hammer-{process_index}-{node_index}")
     }
 
     fn db_name() -> String {

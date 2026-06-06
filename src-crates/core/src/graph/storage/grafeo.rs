@@ -1,5 +1,14 @@
-use std::{collections::HashMap, fs};
+use std::{
+    collections::HashMap,
+    fs,
+    fs::File,
+    io::ErrorKind,
+    path::{Path, PathBuf},
+    thread,
+    time::{Duration, Instant},
+};
 
+use fs2::FileExt;
 use grafeo::GrafeoDB;
 use serde_json::Map;
 
@@ -14,6 +23,8 @@ use crate::{
 
 const ENGINE_NAME: &str = "grafeo";
 const NODE_ID_PROPERTY: &str = "_id";
+const LOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
+const LOCK_WAIT_INTERVAL: Duration = Duration::from_millis(25);
 
 /// Grafeo-backed graph storage context.
 pub struct GrafeoDbContext {
@@ -22,12 +33,15 @@ pub struct GrafeoDbContext {
     storage: GraphStorage,
     /// Keep database handle alive for session-backed persistence.
     _db: GrafeoDB,
+    /// Exclusive process lock for persistent storage access.
+    _lock: Option<File>,
 }
 
 impl GrafeoDbContext {
     /// Creates a Grafeo-backed graph database context.
     pub fn new(name: String) -> Result<Self, GraphError> {
         let persist_at = get_app_dir(AppDirType::Data).join(name);
+        let lock = lock_persistent_storage(&persist_at)?;
         let db = GrafeoDB::open(&persist_at).map_err(|source| {
             GraphError::DbInit {
                 engine: ENGINE_NAME,
@@ -39,6 +53,7 @@ impl GrafeoDbContext {
             session: db.session(),
             storage: GraphStorage::Persistent(persist_at),
             _db: db,
+            _lock: Some(lock),
         })
     }
 
@@ -50,6 +65,7 @@ impl GrafeoDbContext {
             session: db.session(),
             storage: GraphStorage::InMemory,
             _db: db,
+            _lock: None,
         }
     }
 
@@ -78,6 +94,15 @@ impl GrafeoDbContext {
             })?;
 
         Ok(result.rows().len())
+    }
+
+    /// Flushes persistent writes without deleting storage.
+    #[cfg(test)]
+    pub(super) fn close(&self) -> Result<(), GraphError> {
+        self._db.close().map_err(|source| GraphError::GraphDestroy {
+            engine: ENGINE_NAME,
+            source: Box::new(source),
+        })
     }
 }
 
@@ -373,25 +398,72 @@ impl GraphDbContext for GrafeoDbContext {
                 source: Box::new(source),
             })?;
 
-        let GraphStorage::Persistent(storage_path) = self.storage else {
+        let GraphStorage::Persistent(storage_path) = self.storage.clone()
+        else {
             return Ok(());
         };
-
-        if !storage_path.exists() {
-            return Ok(());
+        if storage_path.exists() {
+            fs::remove_dir_all(storage_path).map_err(|source| {
+                GraphError::GraphDestroy {
+                    engine: ENGINE_NAME,
+                    source: Box::new(source),
+                }
+            })?;
         }
 
-        fs::remove_dir_all(storage_path).map_err(|source| {
-            GraphError::GraphDestroy {
-                engine: ENGINE_NAME,
-                source: Box::new(source),
-            }
-        })
+        Ok(())
+    }
+}
+
+impl Drop for GrafeoDbContext {
+    fn drop(&mut self) {
+        let _ = self._db.close();
     }
 }
 
 fn compose_gql_labels(labels: &[&str]) -> String {
     labels.join(":")
+}
+
+/// Returns sidecar path for persistent storage lock.
+fn lock_path_for(storage_path: &Path) -> PathBuf {
+    let mut lock_path = storage_path.as_os_str().to_os_string();
+    lock_path.push(".lock");
+
+    PathBuf::from(lock_path)
+}
+
+/// Acquires exclusive process access to persistent graph storage.
+fn lock_persistent_storage(storage_path: &Path) -> Result<File, GraphError> {
+    let lock_path = lock_path_for(storage_path);
+    let lock =
+        File::create(lock_path).map_err(|source| GraphError::DbInit {
+            engine: ENGINE_NAME,
+            source: Box::new(source),
+        })?;
+    let started_at = Instant::now();
+
+    loop {
+        match lock.try_lock_exclusive() {
+            Ok(()) => return Ok(lock),
+            Err(source) if source.kind() == ErrorKind::WouldBlock => {
+                if started_at.elapsed() >= LOCK_WAIT_TIMEOUT {
+                    return Err(GraphError::DbInit {
+                        engine: ENGINE_NAME,
+                        source: Box::new(source),
+                    });
+                }
+
+                thread::sleep(LOCK_WAIT_INTERVAL);
+            }
+            Err(source) => {
+                return Err(GraphError::DbInit {
+                    engine: ENGINE_NAME,
+                    source: Box::new(source),
+                });
+            }
+        }
+    }
 }
 
 fn convert_json_to_grafeo(

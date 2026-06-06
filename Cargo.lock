@@ -86,6 +86,7 @@ dependencies = [
  "burn-wgpu",
  "criterion",
  "dirs",
+ "fs2",
  "grafeo",
  "memchunk",
  "office_oxide",
