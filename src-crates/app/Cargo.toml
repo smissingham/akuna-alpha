@@ -14,6 +14,7 @@ workspace = true
 
 # shared workspace deps
 anyhow.workspace = true
+schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
@@ -25,3 +26,5 @@ akuna-core = { version = "0.2.0", path = "../core", features = ["full"] }
 clap = { version = "4.6.1", features = ["derive"] }
 axum = "0.8.9"
 utoipa = "5.5.0"
+const_format = "0.2.36"
+tower-http = { version = "0.6.11", features = ["cors"] }

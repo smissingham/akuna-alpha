@@ -83,9 +83,7 @@ walkdir = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 serde = { workspace = true }
-serde_ignored = { workspace = true }
 serde_json = { workspace = true }
-serde_yaml = { workspace = true }
 akuna-core-macros = { path = "../core-macros", version = "0.2.0", optional = true }
 
 # extraction features
@@ -96,8 +94,10 @@ rbook = { version = "0.7.7", optional = true, default-features = false }
 
 # ml features: (embedding, magika etc.)
 burn-wgpu = { version = "0.21.0-pre.3", optional = true, default-features = false, features = ["std", "webgpu"] }
-akuna-infer = { version = "0.1.0", optional = true }
-akuna-embed = { version = "0.1.0", optional = true }
+akuna-embed = { git = "https://github.com/akunasoftware/akuna-embed", optional = true }
+akuna-infer = { git = "https://github.com/akunasoftware/akuna-infer", optional = true }
+# akuna-embed = { version = "0.1.0", optional = true }
+# akuna-infer = { version = "0.1.0", optional = true }
 
 # graph: (storage, search etc.)
 grafeo = { version = "0.5.42", optional = true, default-features = false, features = ["embedded", "hybrid-search", "rdf", "text-index", "vector-index"] }

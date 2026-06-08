@@ -6,9 +6,6 @@ extern crate self as akuna_core;
 #[cfg(feature = "chunking")]
 pub mod chunking;
 
-/// Application configuration APIs.
-pub mod config;
-
 /// Platform-aware application directories.
 pub mod dirs;
 

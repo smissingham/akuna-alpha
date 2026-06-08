@@ -1,25 +1,33 @@
 //! Local HTTP REST API server.
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use akuna_core::graph::storage::grafeo::GrafeoDbContext;
 use anyhow::{Context, Result};
 use axum::{
     Json, Router,
     extract::{Path, State},
+    http::{HeaderValue, Method, header::HOST},
     routing::post,
 };
+use const_format::concatcp;
 use serde::Deserialize;
 use tokio::{net::TcpListener, sync::Mutex};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use utoipa::OpenApi;
 
 use crate::api::{
     error::{ApiErrorBody, ApiResult},
-    knowledge::{KnowledgeRequest, KnowledgeService},
+    knowledge::{
+        KnowledgeAction, KnowledgeRequest, KnowledgeService, KnowledgeType,
+    },
 };
 
 const GRAPH_DB_NAME: &str = "knowledge";
 const API_ADDRESS: &str = "127.0.0.1:9876";
+const API_BASE_PATH: &str = "/api/v1";
+const API_SERVER: &str = concatcp!("http://localhost:9876", API_BASE_PATH);
+pub(crate) const OPENAPI_FILE_NAME: &str = "openapi.json";
 
 type SharedGraph = Arc<Mutex<GrafeoDbContext>>;
 
@@ -30,13 +38,17 @@ struct AppState {
 
 #[derive(Deserialize)]
 struct KnowledgePath {
-    action: String,
+    action: KnowledgeAction,
     #[serde(rename = "type")]
-    knowledge_type: String,
+    knowledge_type: KnowledgeType,
 }
 
 #[derive(utoipa::OpenApi)]
-#[openapi(paths(knowledge), components(schemas(ApiErrorBody)))]
+#[openapi(
+    paths(knowledge),
+    components(schemas(ApiErrorBody, KnowledgeAction, KnowledgeType)),
+    servers((url = API_SERVER))
+)]
 struct ApiDoc;
 
 /// Runs the local REST API server.
@@ -50,13 +62,15 @@ pub async fn run() -> Result<()> {
         graph: Arc::new(Mutex::new(graph)),
     };
     let openapi = ApiDoc::openapi();
-    let app = Router::new()
+    let api = Router::new()
         .route("/knowledge/{action}/{type}", post(knowledge))
         .route(
             "/openapi.json",
             axum::routing::get(|| async { Json(openapi) }),
         )
+        .layer(cors_layer())
         .with_state(state);
+    let app = Router::new().nest(API_BASE_PATH, api);
 
     akuna_core::ak_info!("serving REST API at http://{address}");
     axum::serve(listener, app)
@@ -64,12 +78,80 @@ pub async fn run() -> Result<()> {
         .context("REST API server failed")
 }
 
+/// Generates and writes OpenAPI JSON schema.
+pub(crate) fn generate_schema(out_dir: &std::path::Path) -> Result<PathBuf> {
+    let schema_path = out_dir.join(OPENAPI_FILE_NAME);
+    let schema_json = serde_json::to_string_pretty(&ApiDoc::openapi())
+        .context("Failed to serialize OpenAPI schema")?;
+
+    std::fs::write(&schema_path, schema_json).with_context(|| {
+        format!("Failed to write {}", schema_path.display())
+    })?;
+
+    Ok(schema_path)
+}
+
+/// Builds CORS policy for same-host browser clients on any port.
+fn cors_layer() -> CorsLayer {
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::predicate(|origin, request| {
+            let Some(host) = request.headers.get(HOST) else {
+                return false;
+            };
+
+            is_same_host_origin(origin, host)
+        }))
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers(tower_http::cors::Any)
+}
+
+/// Checks whether Origin host matches request Host, ignoring port.
+fn is_same_host_origin(
+    origin: &HeaderValue,
+    request_host: &HeaderValue,
+) -> bool {
+    let Ok(origin) = origin.to_str() else {
+        return false;
+    };
+    let Ok(request_host) = request_host.to_str() else {
+        return false;
+    };
+    let Some(host) = origin_host(origin) else {
+        return false;
+    };
+    let Some(request_host) = authority_host(request_host) else {
+        return false;
+    };
+
+    host == request_host
+}
+
+/// Extracts host from browser Origin header value.
+fn origin_host(origin: &str) -> Option<&str> {
+    let (_, authority) = origin.split_once("://")?;
+    authority_host(authority)
+}
+
+/// Extracts host from authority string, preserving bracketed IPv6 hosts.
+fn authority_host(authority: &str) -> Option<&str> {
+    let authority = authority.split('/').next().unwrap_or(authority);
+
+    if authority.starts_with('[') {
+        return authority
+            .split(']')
+            .next()
+            .map(|host| &authority[..=host.len()]);
+    }
+
+    authority.split(':').next()
+}
+
 #[utoipa::path(
     post,
     path = "/knowledge/{action}/{type}",
     params(
-        ("action" = String, Path, description = "create, read, update, or delete"),
-        ("type" = String, Path, description = "node, assertion, provenance, or edge"),
+        ("action" = KnowledgeAction, Path, description = "CRUD action"),
+        ("type" = KnowledgeType, Path, description = "Knowledge entity type"),
     ),
     request_body = serde_json::Value,
     responses(

@@ -36,7 +36,7 @@ let
     '')
 
     # Shorthand alias for main package via cargo (use any time, but slower than debug out)
-    (pkgs.writeShellScriptBin "akd" "cargo run -p ${pname} -- --log-level \"debug\" \"$@\"")
+    (pkgs.writeShellScriptBin "akd" "cargo run -p ${pname} --all-features -- --log-level \"debug\" \"$@\"")
 
     # Shorthand alias for main package via debug out (must have already built)
     (pkgs.writeShellScriptBin "ak" "$PROJECT_ROOT/target/debug/${pname} \"$@\"")

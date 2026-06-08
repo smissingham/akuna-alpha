@@ -9,12 +9,40 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::api::error::ServiceError;
 
+/// CRUD actions available through the knowledge API.
+#[derive(Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum KnowledgeAction {
+    /// Creates a knowledge entity.
+    Create,
+    /// Reads a knowledge entity.
+    Read,
+    /// Updates a knowledge entity.
+    Update,
+    /// Deletes a knowledge entity.
+    Delete,
+}
+
+/// Knowledge entity types available through the knowledge API.
+#[derive(Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum KnowledgeType {
+    /// Graph node entity.
+    Node,
+    /// Graph edge entity.
+    Edge,
+    /// Assertion node entity.
+    Assertion,
+    /// Provenance node entity.
+    Provenance,
+}
+
 /// Knowledge service request shared by API adapters.
 pub struct KnowledgeRequest {
     /// CRUD action: create, read, update, or delete.
-    pub action: String,
+    pub action: KnowledgeAction,
     /// Knowledge type: node, assertion, provenance, or edge.
-    pub knowledge_type: String,
+    pub knowledge_type: KnowledgeType,
     /// Request body for selected operation.
     pub body: serde_json::Value,
 }
@@ -50,19 +78,19 @@ impl<'a> KnowledgeService<'a> {
         &self,
         input: KnowledgeRequest,
     ) -> Result<KnowledgeResponse, ServiceError> {
-        let body = match (input.action.as_str(), input.knowledge_type.as_str())
-        {
-            (action, "node") => {
-                node_crud::<Node>(self.graph, action, input.body)
+        let body = match input.knowledge_type {
+            KnowledgeType::Node => {
+                node_crud::<Node>(self.graph, input.action, input.body)
             }
-            (action, "assertion") => {
-                node_crud::<Assertion>(self.graph, action, input.body)
+            KnowledgeType::Assertion => {
+                node_crud::<Assertion>(self.graph, input.action, input.body)
             }
-            (action, "provenance") => {
-                node_crud::<Provenance>(self.graph, action, input.body)
+            KnowledgeType::Provenance => {
+                node_crud::<Provenance>(self.graph, input.action, input.body)
             }
-            (action, "edge") => edge_crud(self.graph, action, input.body),
-            _ => Err(ServiceError::bad_request("unknown knowledge type")),
+            KnowledgeType::Edge => {
+                edge_crud(self.graph, input.action, input.body)
+            }
         }?;
 
         Ok(KnowledgeResponse { body })
@@ -71,19 +99,19 @@ impl<'a> KnowledgeService<'a> {
 
 fn node_crud<T>(
     graph: &GrafeoDbContext,
-    action: &str,
+    action: KnowledgeAction,
     body: serde_json::Value,
 ) -> Result<serde_json::Value, ServiceError>
 where
     T: GraphNode + DeserializeOwned + Serialize + 'static,
 {
     match action {
-        "create" | "update" => {
+        KnowledgeAction::Create | KnowledgeAction::Update => {
             let node: T = serde_json::from_value(body)?;
             graph.put_node(&node)?;
             Ok(serde_json::to_value(node)?)
         }
-        "read" => {
+        KnowledgeAction::Read => {
             let read: ReadNode = serde_json::from_value(body)?;
             let labels =
                 read.labels.iter().map(String::as_str).collect::<Vec<_>>();
@@ -95,36 +123,34 @@ where
 
             Ok(serde_json::to_value(node)?)
         }
-        "delete" => {
+        KnowledgeAction::Delete => {
             let read: ReadNode = serde_json::from_value(body)?;
             let labels =
                 read.labels.iter().map(String::as_str).collect::<Vec<_>>();
             graph.delete_node::<T>(&labels, read.id)?;
             Ok(serde_json::json!({ "deleted": true }))
         }
-        _ => Err(ServiceError::bad_request("unknown knowledge action")),
     }
 }
 
 fn edge_crud(
     graph: &GrafeoDbContext,
-    action: &str,
+    action: KnowledgeAction,
     body: serde_json::Value,
 ) -> Result<serde_json::Value, ServiceError> {
     match action {
-        "create" | "update" => {
+        KnowledgeAction::Create | KnowledgeAction::Update => {
             let edge: Edge = serde_json::from_value(body)?;
             graph.put_edge(&edge)?;
             Ok(serde_json::to_value(edge)?)
         }
-        "delete" => {
+        KnowledgeAction::Delete => {
             let edge: Edge = serde_json::from_value(body)?;
             graph.delete_edge(&edge)?;
             Ok(serde_json::json!({ "deleted": true }))
         }
-        "read" => {
+        KnowledgeAction::Read => {
             Err(ServiceError::bad_request("edge read is not available yet"))
         }
-        _ => Err(ServiceError::bad_request("unknown knowledge action")),
     }
 }

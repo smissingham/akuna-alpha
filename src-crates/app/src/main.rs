@@ -2,6 +2,7 @@
 
 mod api;
 mod cli;
+mod config;
 
 use anyhow::Result;
 use serde::Serialize;

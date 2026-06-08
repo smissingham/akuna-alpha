@@ -38,7 +38,7 @@ command = [
   "akuna",
   "--",
   "--log-level",
-  "TRACE",
+  "trace",
   "serve"
 ]
 

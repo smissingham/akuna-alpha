@@ -1,7 +1,7 @@
 //! Command-line interface commands.
 
 mod extraction;
-mod indexing;
+mod schemas;
 mod serve;
 
 use akuna_core::tracing::{LOG_LEVELS, setup_tracing};
@@ -22,10 +22,10 @@ struct Cli {
 enum Command {
     /// Extract structured metadata & content from a file.
     Extract(extraction::ExtractCommand),
-    /// Manage file indexing.
-    Index {
+    /// Manage generated schemas.
+    Schemas {
         #[command(subcommand)]
-        command: indexing::IndexCommand,
+        command: schemas::SchemasCommand,
     },
     /// Serve the local REST API.
     Serve,
@@ -38,7 +38,7 @@ pub async fn run() -> Result<()> {
 
     match cli.command {
         Command::Extract(command) => command.run().await,
-        Command::Index { command } => command.run().await,
+        Command::Schemas { command } => command.run().await,
         Command::Serve => serve::run().await,
     }
 }
