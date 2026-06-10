@@ -1,52 +1,38 @@
 //! Local HTTP REST API server.
 
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf};
 
-use akuna_core::graph::storage::grafeo::GrafeoDbContext;
 use anyhow::{Context, Result};
 use axum::{
     Json, Router,
-    extract::{Path, State},
     http::{HeaderValue, Method, header::HOST},
-    routing::post,
 };
 use const_format::concatcp;
-use serde::Deserialize;
-use tokio::{net::TcpListener, sync::Mutex};
+use tokio::net::TcpListener;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use utoipa::OpenApi;
 
-use crate::api::{
-    error::{ApiErrorBody, ApiResult},
-    knowledge::{
-        KnowledgeAction, KnowledgeRequest, KnowledgeService, KnowledgeType,
-    },
-};
+use akuna_core::graph::structs::{Edge, Node};
 
-const GRAPH_DB_NAME: &str = "knowledge";
+use crate::api::{error::ApiErrorBody, knowledge};
+
 const API_ADDRESS: &str = "127.0.0.1:9876";
 const API_BASE_PATH: &str = "/api/v1";
 const API_SERVER: &str = concatcp!("http://localhost:9876", API_BASE_PATH);
 pub(crate) const OPENAPI_FILE_NAME: &str = "openapi.json";
 
-type SharedGraph = Arc<Mutex<GrafeoDbContext>>;
-
-#[derive(Clone)]
-struct AppState {
-    graph: SharedGraph,
-}
-
-#[derive(Deserialize)]
-struct KnowledgePath {
-    action: KnowledgeAction,
-    #[serde(rename = "type")]
-    knowledge_type: KnowledgeType,
-}
-
 #[derive(utoipa::OpenApi)]
 #[openapi(
-    paths(knowledge),
-    components(schemas(ApiErrorBody, KnowledgeAction, KnowledgeType)),
+    paths(
+        knowledge::create_node,
+        knowledge::read_node,
+        knowledge::update_node,
+        knowledge::delete_node,
+        knowledge::create_edge,
+        knowledge::update_edge,
+        knowledge::delete_edge,
+    ),
+    components(schemas(ApiErrorBody, Node, Edge, knowledge::DeleteResponse)),
     servers((url = API_SERVER))
 )]
 struct ApiDoc;
@@ -57,19 +43,13 @@ pub async fn run() -> Result<()> {
     let listener = TcpListener::bind(address)
         .await
         .with_context(|| format!("Failed to bind API address {address}"))?;
-    let graph = GrafeoDbContext::new(GRAPH_DB_NAME.to_string())?;
-    let state = AppState {
-        graph: Arc::new(Mutex::new(graph)),
-    };
     let openapi = ApiDoc::openapi();
-    let api = Router::new()
-        .route("/knowledge/{action}/{type}", post(knowledge))
+    let api = knowledge::router()
         .route(
             "/openapi.json",
             axum::routing::get(|| async { Json(openapi) }),
         )
-        .layer(cors_layer())
-        .with_state(state);
+        .layer(cors_layer());
     let app = Router::new().nest(API_BASE_PATH, api);
 
     akuna_core::ak_info!("serving REST API at http://{address}");
@@ -101,7 +81,13 @@ fn cors_layer() -> CorsLayer {
 
             is_same_host_origin(origin, host)
         }))
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_methods([
+            Method::DELETE,
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::OPTIONS,
+        ])
         .allow_headers(tower_http::cors::Any)
 }
 
@@ -144,34 +130,4 @@ fn authority_host(authority: &str) -> Option<&str> {
     }
 
     authority.split(':').next()
-}
-
-#[utoipa::path(
-    post,
-    path = "/knowledge/{action}/{type}",
-    params(
-        ("action" = KnowledgeAction, Path, description = "CRUD action"),
-        ("type" = KnowledgeType, Path, description = "Knowledge entity type"),
-    ),
-    request_body = serde_json::Value,
-    responses(
-        (status = 200, description = "Knowledge operation result"),
-        (status = 400, description = "Invalid request", body = ApiErrorBody),
-        (status = 404, description = "Knowledge entity not found", body = ApiErrorBody),
-        (status = 500, description = "Graph operation failed", body = ApiErrorBody),
-    )
-)]
-async fn knowledge(
-    State(state): State<AppState>,
-    Path(path): Path<KnowledgePath>,
-    Json(body): Json<serde_json::Value>,
-) -> ApiResult<serde_json::Value> {
-    let graph = state.graph.lock().await;
-    let output = KnowledgeService::new(&graph).execute(KnowledgeRequest {
-        action: path.action,
-        knowledge_type: path.knowledge_type,
-        body,
-    })?;
-
-    Ok(Json(output.body))
 }

@@ -2,12 +2,12 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, LitStr, parse_macro_input};
+use syn::{Data, DeriveInput, Fields, parse_macro_input};
 
 /// Derives `akuna_core::graph::traits::GraphNode`.
 ///
-/// Use `#[graph(node_type(name = "Name"))]` on fixed node types.
-/// Use `#[graph(id)]`, `#[graph(name)]`, `#[graph(description)]`, and `#[graph(metadata)]` on named fields.
+/// Use `#[graph(id)]`, `#[graph(labels)]`, `#[graph(name)]`,
+/// `#[graph(description)]`, and `#[graph(metadata)]` on named fields.
 #[proc_macro_derive(GraphNode, attributes(graph))]
 pub fn derive_graph_node(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -34,11 +34,11 @@ pub fn derive_graph_edge(input: TokenStream) -> TokenStream {
 fn expand_graph_node(
     input: DeriveInput,
 ) -> syn::Result<proc_macro2::TokenStream> {
+    reject_graph_node_attrs(&input.attrs)?;
+
     let name = input.ident;
-    let config = graph_node_config(&input.attrs)?;
     let fields = graph_node_fields(&input.data)?;
     let id_field = fields.id;
-    let labels = config.labels;
     let labels_field = fields.labels;
     let name_field = fields.name;
     let description_field = fields.description;
@@ -46,38 +46,10 @@ fn expand_graph_node(
     let metadata_ty = fields.metadata_ty;
     let (impl_generics, type_generics, where_clause) =
         input.generics.split_for_impl();
-    let labels_method = match (labels, &labels_field) {
-        (Some(labels), _) => quote! { vec![#(#labels),*] },
-        (None, Some(field)) => quote! {
-            self.#field.iter().map(String::as_str).collect()
-        },
-        (None, None) => {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "GraphNode requires #[graph(node_type(name = \"...\"))] or #[graph(labels)] field",
-            ));
-        }
-    };
-    let labels_assignment = labels_field
+    let description_method = description_field
         .as_ref()
-        .map(|field| quote! { #field: labels, });
-    let name_method = match (config.name, &name_field) {
-        (Some(name), _) => quote! { #name },
-        (None, Some(field)) => quote! { self.#field.as_ref() },
-        (None, None) => {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "GraphNode requires #[graph(node_type(name = \"...\"))] or #[graph(name)] field",
-            ));
-        }
-    };
-    let description_method = match (config.description, &description_field) {
-        (Some(description), _) => quote! { Some(#description) },
-        (None, Some(field)) => quote! { self.#field.as_deref() },
-        (None, None) => quote! { None },
-    };
-    let name_assignment =
-        name_field.as_ref().map(|field| quote! { #field: name, });
+        .map(|field| quote! { self.#field.as_deref() })
+        .unwrap_or_else(|| quote! { None });
     let description_assignment = description_field
         .as_ref()
         .map(|field| quote! { #field: description, });
@@ -87,7 +59,7 @@ fn expand_graph_node(
             type Metadata = #metadata_ty;
 
             fn labels(&self) -> Vec<&str> {
-                #labels_method
+                self.#labels_field.iter().map(String::as_str).collect()
             }
 
             fn id(&self) -> &str {
@@ -95,7 +67,7 @@ fn expand_graph_node(
             }
 
             fn name(&self) -> &str {
-                #name_method
+                self.#name_field.as_ref()
             }
 
             fn description(&self) -> Option<&str> {
@@ -115,8 +87,8 @@ fn expand_graph_node(
             ) -> Self {
                 Self {
                     #id_field: id,
-                    #labels_assignment
-                    #name_assignment
+                    #labels_field: labels,
+                    #name_field: name,
                     #description_assignment
                     #metadata_field: metadata,
                 }
@@ -128,7 +100,7 @@ fn expand_graph_node(
 fn expand_graph_edge(
     input: DeriveInput,
 ) -> syn::Result<proc_macro2::TokenStream> {
-    reject_graph_edge_type_attrs(&input.attrs)?;
+    reject_graph_edge_attrs(&input.attrs)?;
 
     let name = input.ident;
     let fields = graph_edge_fields(&input.data)?;
@@ -165,15 +137,19 @@ fn expand_graph_edge(
     })
 }
 
-fn reject_graph_edge_type_attrs(attrs: &[syn::Attribute]) -> syn::Result<()> {
+fn reject_graph_node_attrs(attrs: &[syn::Attribute]) -> syn::Result<()> {
     for attr in attrs.iter().filter(|attr| attr.path().is_ident("graph")) {
         attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("node_type") {
-                return Err(meta.error(
-                    "GraphEdge does not support graph node type attributes",
-                ));
-            }
+            Err(meta.error("unsupported graph node attribute"))
+        })?;
+    }
 
+    Ok(())
+}
+
+fn reject_graph_edge_attrs(attrs: &[syn::Attribute]) -> syn::Result<()> {
+    for attr in attrs.iter().filter(|attr| attr.path().is_ident("graph")) {
+        attr.parse_nested_meta(|meta| {
             Err(meta.error("unsupported graph edge attribute"))
         })?;
     }
@@ -183,56 +159,11 @@ fn reject_graph_edge_type_attrs(attrs: &[syn::Attribute]) -> syn::Result<()> {
 
 struct GraphNodeFields {
     id: syn::Ident,
-    labels: Option<syn::Ident>,
-    name: Option<syn::Ident>,
+    labels: syn::Ident,
+    name: syn::Ident,
     description: Option<syn::Ident>,
     metadata: syn::Ident,
     metadata_ty: syn::Type,
-}
-
-struct GraphNodeConfig {
-    labels: Option<Vec<String>>,
-    name: Option<String>,
-    description: Option<String>,
-}
-
-fn graph_node_config(attrs: &[syn::Attribute]) -> syn::Result<GraphNodeConfig> {
-    let mut labels = None;
-    let mut name = None;
-    let mut description = None;
-
-    for attr in attrs.iter().filter(|attr| attr.path().is_ident("graph")) {
-        attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("node_type") {
-                meta.parse_nested_meta(|meta| {
-                    if meta.path.is_ident("name") {
-                        let value = meta.value()?;
-                        name = Some(value.parse::<LitStr>()?.value());
-                        return Ok(());
-                    }
-
-                    if meta.path.is_ident("description") {
-                        let value = meta.value()?;
-                        description = Some(value.parse::<LitStr>()?.value());
-                        return Ok(());
-                    }
-
-                    Err(meta.error("unsupported graph node type attribute"))
-                })?;
-                return Ok(());
-            }
-
-            Err(meta.error("unsupported graph attribute"))
-        })?;
-    }
-
-    labels = labels.or_else(|| name.clone().map(|name| vec![name]));
-
-    Ok(GraphNodeConfig {
-        labels,
-        name,
-        description,
-    })
 }
 
 fn graph_node_fields(data: &Data) -> syn::Result<GraphNodeFields> {
@@ -301,8 +232,8 @@ fn graph_node_fields(data: &Data) -> syn::Result<GraphNodeFields> {
 
     Ok(GraphNodeFields {
         id: required_graph_node_field(id, fields, "id")?,
-        labels,
-        name,
+        labels: required_graph_node_field(labels, fields, "labels")?,
+        name: required_graph_node_field(name, fields, "name")?,
         description,
         metadata: required_graph_node_field(metadata, fields, "metadata")?,
         metadata_ty: metadata_ty.ok_or_else(|| {
