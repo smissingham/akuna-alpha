@@ -75,7 +75,7 @@ let
     rustc = rustToolChain;
   };
 in
-rustPlatform.buildRustPackage {
+  rustPlatform.buildRustPackage {
   inherit buildType;
   pname = pname;
   version = version;
@@ -90,16 +90,16 @@ rustPlatform.buildRustPackage {
   # git-sourced dependencies require explicit hashes
   cargoLock = {
     lockFile = ../Cargo.lock;
-    outputHashes = {
-      "burn-embed-0.1.0" = "sha256-13MhU9n+qqTCWyJSddTo+UPYSz6r+Sv5u/4trF9+2gQ";
-      "burn-magika-0.1.0" = "sha256-yirVZbeX6Da7OOs1ztBo+e5NR9y8W3mthKA/Tr2G83A=";
-    };
   };
 
   # Only build the main crate, not all workspace members
   cargoBuildFlags = [
     "--package=${cargoPackageName}"
   ];
+
+  postInstall = lib.optionalString pkgs.stdenv.isLinux ''
+    strip --strip-unneeded "$out/bin/${pname}"
+  '';
 
   meta = {
     description = "Akuna Knowledge Tools";

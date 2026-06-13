@@ -19,18 +19,19 @@ const GRAPH_DB_NAME: &str = "knowledge";
 /// Registers knowledge API routes.
 pub(crate) fn router() -> Router {
     Router::new()
-        .route("/knowledge/nodes", post(create_node))
+        .route("/graph/nodes", post(create_node))
         .route(
-            "/knowledge/nodes/{id}",
+            "/graph/nodes/{id}",
             get(read_node).put(update_node).delete(delete_node),
         )
-        .route("/knowledge/edges", post(create_edge))
-        .route("/knowledge/edges", put(update_edge))
-        .route("/knowledge/edges", delete(delete_edge))
+        .route("/graph/edges", post(create_edge))
+        .route("/graph/edges", put(update_edge))
+        .route("/graph/edges", delete(delete_edge))
 }
 
 /// Query parameters for reading or deleting graph nodes.
 #[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(crate) struct NodeQuery {
     /// Labels scoping node ID.
     labels: Vec<String>,
@@ -38,6 +39,7 @@ pub(crate) struct NodeQuery {
 
 /// Query parameters identifying a graph edge.
 #[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(crate) struct EdgeQuery {
     /// Source node labels.
     source_labels: Vec<String>,
@@ -60,7 +62,7 @@ pub(crate) struct DeleteResponse {
 
 #[utoipa::path(
     post,
-    path = "/knowledge/nodes",
+    path = "/graph/nodes",
     request_body = Node,
     responses(
         (status = 200, description = "Created node", body = Node),
@@ -74,7 +76,7 @@ pub(crate) async fn create_node(Json(node): Json<Node>) -> ApiResult<Node> {
 
 #[utoipa::path(
     get,
-    path = "/knowledge/nodes/{id}",
+    path = "/graph/nodes/{id}",
     params(("id" = String, Path, description = "Stable node ID"), NodeQuery),
     responses(
         (status = 200, description = "Node", body = Node),
@@ -91,7 +93,7 @@ pub(crate) async fn read_node(
 
 #[utoipa::path(
     put,
-    path = "/knowledge/nodes/{id}",
+    path = "/graph/nodes/{id}",
     params(("id" = String, Path, description = "Stable node ID")),
     request_body = Node,
     responses(
@@ -115,7 +117,7 @@ pub(crate) async fn update_node(
 
 #[utoipa::path(
     delete,
-    path = "/knowledge/nodes/{id}",
+    path = "/graph/nodes/{id}",
     params(("id" = String, Path, description = "Stable node ID"), NodeQuery),
     responses(
         (status = 200, description = "Deleted node", body = DeleteResponse),
@@ -131,7 +133,7 @@ pub(crate) async fn delete_node(
 
 #[utoipa::path(
     post,
-    path = "/knowledge/edges",
+    path = "/graph/edges",
     request_body = Edge,
     responses(
         (status = 200, description = "Created edge", body = Edge),
@@ -145,7 +147,7 @@ pub(crate) async fn create_edge(Json(edge): Json<Edge>) -> ApiResult<Edge> {
 
 #[utoipa::path(
     put,
-    path = "/knowledge/edges",
+    path = "/graph/edges",
     request_body = Edge,
     responses(
         (status = 200, description = "Updated edge", body = Edge),
@@ -159,7 +161,7 @@ pub(crate) async fn update_edge(Json(edge): Json<Edge>) -> ApiResult<Edge> {
 
 #[utoipa::path(
     delete,
-    path = "/knowledge/edges",
+    path = "/graph/edges",
     params(EdgeQuery),
     responses(
         (status = 200, description = "Deleted edge", body = DeleteResponse),
