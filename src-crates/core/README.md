@@ -48,14 +48,14 @@ let embedding = model.embed("Hello world")?;
 
 ## Graph
 
-Use [`graph`](./src/graph/) when storing domain data as typed graph nodes and edges.
+Use [`graph`](./src/graph/) when storing graph nodes and edges behind a swappable storage backend.
 
 #### Minimal Example. See [`akuna_core::graph`](./src/graph/) for more details.
 
 ```rust
-use akuna_core::graph::knowledge::Concept;
+use akuna_core::graph::structs::GraphNode;
 
-let concept = Concept {
+let node = GraphNode {
     id: "rust".to_string(),
     labels: vec!["Concept".to_string(), "Language".to_string()],
     name: "Rust".to_string(),

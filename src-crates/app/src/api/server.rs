@@ -12,7 +12,7 @@ use tokio::net::TcpListener;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use utoipa::OpenApi;
 
-use akuna_core::graph::structs::{Edge, Node};
+use akuna_core::graph::structs::{GraphEdge, GraphNode};
 
 use crate::api::{error::ApiErrorBody, knowledge};
 
@@ -32,7 +32,7 @@ pub(crate) const OPENAPI_FILE_NAME: &str = "openapi.json";
         knowledge::update_edge,
         knowledge::delete_edge,
     ),
-    components(schemas(ApiErrorBody, Node, Edge, knowledge::DeleteResponse)),
+    components(schemas(ApiErrorBody, GraphNode, GraphEdge)),
     servers((url = API_SERVER))
 )]
 struct ApiDoc;
@@ -45,6 +45,9 @@ pub async fn run() -> Result<()> {
         .with_context(|| format!("Failed to bind API address {address}"))?;
     let openapi = ApiDoc::openapi();
     let api = knowledge::router()
+        .map_err(|error| {
+            anyhow::anyhow!("Failed to initialize graph API: {error:?}")
+        })?
         .route(
             "/openapi.json",
             axum::routing::get(|| async { Json(openapi) }),

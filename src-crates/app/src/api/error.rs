@@ -8,6 +8,7 @@ use axum::{
 use serde::Serialize;
 
 /// Error returned by service interfaces.
+#[derive(Debug)]
 pub enum ServiceError {
     /// Input was invalid.
     BadRequest { message: String },

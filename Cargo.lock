@@ -76,6 +76,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tower",
  "tower-http",
  "utoipa",
 ]
@@ -84,7 +85,6 @@ dependencies = [
 name = "akuna-core"
 version = "0.2.0"
 dependencies = [
- "akuna-core-macros",
  "akuna-embed",
  "akuna-infer",
  "anyhow",
@@ -136,15 +136,6 @@ dependencies = [
  "tree-sitter-yaml",
  "utoipa",
  "walkdir",
-]
-
-[[package]]
-name = "akuna-core-macros"
-version = "0.2.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
 ]
 
 [[package]]

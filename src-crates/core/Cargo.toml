@@ -37,7 +37,7 @@ extraction = [
   "dep:rbook"
 ]
 embedding = ["dep:burn-wgpu", "dep:akuna-embed"]
-graph = ["dep:akuna-core-macros", "dep:grafeo"]
+graph = ["dep:grafeo"]
 
 chunking = ["dep:memchunk"]
 chunking-tree-sitter = [
@@ -86,7 +86,6 @@ tracing-subscriber = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 utoipa = { workspace = true, optional = true }
-akuna-core-macros = { path = "../core-macros", version = "0.2.0", optional = true }
 
 # extraction features
 pdf_oxide = { version = "0.3.30", optional = true, default-features = false }

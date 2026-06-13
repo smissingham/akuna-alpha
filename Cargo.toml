@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["src-crates/app", "src-crates/core", "src-crates/core-macros"]
+members = ["src-crates/app", "src-crates/core"]
 
 [workspace.package]
 authors = ["Akuna Team"]

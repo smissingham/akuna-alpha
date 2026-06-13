@@ -8,7 +8,8 @@ use crate::{
     dirs::{AppDirType, get_app_dir},
     graph::{
         storage::GraphStorage,
-        traits::{GraphDbContext, GraphEdge, GraphNode},
+        structs::{GraphEdge, GraphNode},
+        traits::GraphDbContext,
     },
 };
 
@@ -86,13 +87,10 @@ impl GraphDbContext for GrafeoDbContext {
         &self.storage
     }
 
-    fn put_node<T>(&self, node: &T) -> Result<(), GraphError>
-    where
-        T: GraphNode + ?Sized,
-    {
-        let labels = node.labels();
-        let id = node.id().to_string();
-        let mut properties = match node.metadata() {
+    fn put_node(&self, node: &GraphNode) -> Result<(), GraphError> {
+        let labels = node.labels.iter().map(String::as_str).collect::<Vec<_>>();
+        let id = node.id.clone();
+        let mut properties = match node.metadata.as_ref() {
             Some(metadata) => {
                 let serde_json::Value::Object(properties) =
                     serde_json::to_value(metadata).map_err(|source| {
@@ -115,14 +113,13 @@ impl GraphDbContext for GrafeoDbContext {
         );
         properties.insert(
             "name".to_string(),
-            serde_json::Value::String(node.name().to_string()),
+            serde_json::Value::String(node.name.clone()),
         );
         properties.insert(
             "description".to_string(),
-            node.description()
-                .map(|description| {
-                    serde_json::Value::String(description.to_string())
-                })
+            node.description
+                .clone()
+                .map(serde_json::Value::String)
                 .unwrap_or(serde_json::Value::Null),
         );
         let assignments = properties
@@ -163,14 +160,11 @@ impl GraphDbContext for GrafeoDbContext {
         Ok(())
     }
 
-    fn get_node<T>(
+    fn get_node(
         &self,
         labels: &[&str],
         id: impl AsRef<str>,
-    ) -> Result<Option<T>, GraphError>
-    where
-        T: GraphNode,
-    {
+    ) -> Result<Option<GraphNode>, GraphError> {
         let id = id.as_ref();
 
         let query = format!(
@@ -215,23 +209,20 @@ impl GraphDbContext for GrafeoDbContext {
             )
         };
 
-        Ok(Some(T::from_graph_parts(
-            id.to_string(),
-            labels.iter().map(|label| (*label).to_string()).collect(),
+        Ok(Some(GraphNode {
+            id: id.to_string(),
+            labels: labels.iter().map(|label| (*label).to_string()).collect(),
             name,
             description,
             metadata,
-        )))
+        }))
     }
 
-    fn delete_node<T>(
+    fn delete_node(
         &self,
         labels: &[&str],
         id: impl AsRef<str>,
-    ) -> Result<(), GraphError>
-    where
-        T: GraphNode,
-    {
+    ) -> Result<(), GraphError> {
         let id = id.as_ref();
 
         let query = format!(
@@ -271,16 +262,27 @@ impl GraphDbContext for GrafeoDbContext {
         Ok(())
     }
 
-    fn put_edge<T>(&self, edge: &T) -> Result<(), GraphError>
-    where
-        T: GraphEdge + ?Sized,
-    {
-        let predicate = edge.predicate();
-        let source_labels = edge.source_labels();
-        let target_labels = edge.target_labels();
+    fn put_edge(&self, edge: &GraphEdge) -> Result<(), GraphError> {
+        let predicate = edge.predicate.as_str();
+        let source_labels = edge
+            .source_labels
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        let target_labels = edge
+            .target_labels
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
         let params = HashMap::from([
-            ("source_id".to_string(), grafeo::Value::from(edge.source())),
-            ("target_id".to_string(), grafeo::Value::from(edge.target())),
+            (
+                "source_id".to_string(),
+                grafeo::Value::from(edge.source.as_str()),
+            ),
+            (
+                "target_id".to_string(),
+                grafeo::Value::from(edge.target.as_str()),
+            ),
         ]);
         let exists_query = format!(
             "MATCH (source:{})-[edge:{}]->(target:{}) WHERE source._id = $source_id AND target._id = $target_id RETURN edge",
@@ -315,9 +317,9 @@ impl GraphDbContext for GrafeoDbContext {
                 engine: ENGINE_NAME,
                 operation: GraphWriteOperation::Put,
                 target: GraphTarget::Edge {
-                    predicate: edge.predicate().to_string(),
-                    source_id: edge.source().to_string(),
-                    target_id: edge.target().to_string(),
+                    predicate: edge.predicate.clone(),
+                    source_id: edge.source.clone(),
+                    target_id: edge.target.clone(),
                 },
                 source: Box::new(source),
             })?;
@@ -325,13 +327,18 @@ impl GraphDbContext for GrafeoDbContext {
         Ok(())
     }
 
-    fn delete_edge<T>(&self, edge: &T) -> Result<(), GraphError>
-    where
-        T: GraphEdge + ?Sized,
-    {
-        let predicate = edge.predicate();
-        let source_labels = edge.source_labels();
-        let target_labels = edge.target_labels();
+    fn delete_edge(&self, edge: &GraphEdge) -> Result<(), GraphError> {
+        let predicate = edge.predicate.as_str();
+        let source_labels = edge
+            .source_labels
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        let target_labels = edge
+            .target_labels
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
         let query = format!(
             "MATCH (source:{})-[edge:{}]->(target:{}) WHERE source._id = $source_id AND target._id = $target_id DELETE edge RETURN edge",
             compose_gql_labels(&source_labels),
@@ -339,14 +346,20 @@ impl GraphDbContext for GrafeoDbContext {
             compose_gql_labels(&target_labels),
         );
         let params = HashMap::from([
-            ("source_id".to_string(), grafeo::Value::from(edge.source())),
-            ("target_id".to_string(), grafeo::Value::from(edge.target())),
+            (
+                "source_id".to_string(),
+                grafeo::Value::from(edge.source.as_str()),
+            ),
+            (
+                "target_id".to_string(),
+                grafeo::Value::from(edge.target.as_str()),
+            ),
         ]);
 
         let target = GraphTarget::Edge {
-            predicate: edge.predicate().to_string(),
-            source_id: edge.source().to_string(),
-            target_id: edge.target().to_string(),
+            predicate: edge.predicate.clone(),
+            source_id: edge.source.clone(),
+            target_id: edge.target.clone(),
         };
 
         let result = self.session.execute_with_params(&query, params).map_err(

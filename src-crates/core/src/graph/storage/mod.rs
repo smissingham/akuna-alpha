@@ -16,49 +16,16 @@ pub enum GraphStorage {
 mod tests {
     use std::{sync::Arc, time::SystemTime};
 
-    use serde::{Deserialize, Serialize};
     use tokio::task::JoinSet;
 
     use crate::{
         GraphError, GraphTarget,
         graph::{
             storage::{GraphStorage, grafeo::GrafeoDbContext},
-            traits::{GraphDbContext, GraphEdge, GraphNode},
+            structs::{GraphEdge, GraphNode},
+            traits::GraphDbContext,
         },
     };
-
-    #[derive(Clone, Debug, GraphNode, PartialEq)]
-    struct TestNode {
-        #[graph(id)]
-        id: String,
-        #[graph(labels)]
-        labels: Vec<String>,
-        #[graph(name)]
-        name: String,
-        #[graph(description)]
-        description: Option<String>,
-        #[graph(metadata)]
-        metadata: Option<TestMetadata>,
-    }
-
-    #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-    struct TestMetadata {
-        val: String,
-    }
-
-    #[derive(Clone, Debug, GraphEdge, PartialEq, Eq)]
-    struct TestEdge {
-        #[graph(source_labels)]
-        source_labels: Vec<String>,
-        #[graph(source)]
-        source: String,
-        #[graph(predicate)]
-        predicate: String,
-        #[graph(target)]
-        target: String,
-        #[graph(target_labels)]
-        target_labels: Vec<String>,
-    }
 
     const EXISTING_COUNT: usize = 20;
     const TOTAL_COUNT: usize = 30;
@@ -96,23 +63,19 @@ mod tests {
                 #[tokio::test]
                 async fn ids_are_label_scoped() {
                     let graph_db = $new_in_memory();
-                    let first = TestNode {
+                    let first = GraphNode {
                         id: "same".to_string(),
                         labels: vec!["Concept".to_string(), "Old".to_string()],
                         name: "old".to_string(),
                         description: None,
-                        metadata: Some(TestMetadata {
-                            val: "old".to_string(),
-                        }),
+                        metadata: Some(metadata("old")),
                     };
-                    let second = TestNode {
+                    let second = GraphNode {
                         id: first.id.clone(),
                         labels: vec!["Concept".to_string(), "New".to_string()],
                         name: "new".to_string(),
                         description: None,
-                        metadata: Some(TestMetadata {
-                            val: "new".to_string(),
-                        }),
+                        metadata: Some(metadata("new")),
                     };
 
                     graph_db
@@ -140,7 +103,7 @@ mod tests {
                     );
 
                     let retrieved = graph_db
-                        .get_node::<TestNode>(&["Concept", "New"], &second.id)
+                        .get_node(&["Concept", "New"], &second.id)
                         .expect("Failed to read upserted node");
 
                     assert_eq!(retrieved, Some(second));
@@ -150,42 +113,42 @@ mod tests {
                 #[tokio::test]
                 async fn edges_are_label_scoped() {
                     let graph_db = $new_in_memory();
-                    let old_source = TestNode {
+                    let old_source = GraphNode {
                         id: "source".to_string(),
                         labels: vec!["Concept".to_string(), "Old".to_string()],
                         name: "old source".to_string(),
                         description: None,
                         metadata: None,
                     };
-                    let new_source = TestNode {
+                    let new_source = GraphNode {
                         id: old_source.id.clone(),
                         labels: vec!["Concept".to_string(), "New".to_string()],
                         name: "new source".to_string(),
                         description: None,
                         metadata: None,
                     };
-                    let old_target = TestNode {
+                    let old_target = GraphNode {
                         id: "target".to_string(),
                         labels: vec!["Concept".to_string(), "Old".to_string()],
                         name: "old target".to_string(),
                         description: None,
                         metadata: None,
                     };
-                    let new_target = TestNode {
+                    let new_target = GraphNode {
                         id: old_target.id.clone(),
                         labels: vec!["Concept".to_string(), "New".to_string()],
                         name: "new target".to_string(),
                         description: None,
                         metadata: None,
                     };
-                    let edge = TestEdge {
+                    let edge = GraphEdge {
                         source_labels: new_source.labels.clone(),
                         source: new_source.id.clone(),
                         predicate: "RELATES_TO".to_string(),
                         target: new_target.id.clone(),
                         target_labels: new_target.labels.clone(),
                     };
-                    let old_edge = TestEdge {
+                    let old_edge = GraphEdge {
                         source_labels: old_source.labels.clone(),
                         source: old_source.id.clone(),
                         predicate: edge.predicate.clone(),
@@ -224,14 +187,12 @@ mod tests {
                 #[tokio::test]
                 async fn persists_and_destroys() {
                     let db_name = db_name();
-                    let item = TestNode {
+                    let item = GraphNode {
                         id: "123".to_string(),
                         labels: labels_vec(),
                         name: "persisted".to_string(),
                         description: Some("persisted-val".to_string()),
-                        metadata: Some(TestMetadata {
-                            val: "persisted-extra".to_string(),
-                        }),
+                        metadata: Some(metadata("persisted-extra")),
                     };
 
                     {
@@ -251,7 +212,7 @@ mod tests {
                     let graph_db = $new_persistent(db_name.clone())
                         .expect("Failed to reinitialize persisted graph db");
                     let retrieved = graph_db
-                        .get_node::<TestNode>(labels(), &item.id)
+                        .get_node(labels(), &item.id)
                         .expect("Failed to read persisted entry");
 
                     assert_eq!(retrieved, Some(item));
@@ -263,7 +224,7 @@ mod tests {
                     let graph_db = $new_persistent(db_name)
                         .expect("Failed to reinitialize destroyed graph db");
                     let retrieved = graph_db
-                        .get_node::<TestNode>(labels(), "123")
+                        .get_node(labels(), "123")
                         .expect("Failed to read from destroyed graph db");
 
                     assert_eq!(retrieved, None);
@@ -283,14 +244,14 @@ mod tests {
                         let graph_db = Arc::clone(&graph_db);
 
                         work.spawn(async move {
-                            let item = TestNode {
+                            let item = GraphNode {
                                 id: format!("item-{index}"),
                                 labels: labels_vec(),
                                 name: format!("item-{index}"),
                                 description: Some(format!("val-{index}")),
-                                metadata: Some(TestMetadata {
-                                    val: format!("extra-{index}"),
-                                }),
+                                metadata: Some(metadata(format!(
+                                    "extra-{index}"
+                                ))),
                             };
 
                             graph_db.put_node(&item)
@@ -311,7 +272,7 @@ mod tests {
                                 && index % DELETE_EVERY == 0
                             {
                                 return graph_db
-                                    .delete_node::<TestNode>(labels(), &id)
+                                    .delete_node(labels(), &id)
                                     .map(|_| ());
                             }
 
@@ -326,11 +287,9 @@ mod tests {
 
                     for index in 0..TOTAL_COUNT {
                         let id = format!("item-{index}");
-                        let item = graph_db
-                            .get_node::<TestNode>(labels(), &id)
-                            .expect(
-                                "Failed to read concurrently inserted entry",
-                            );
+                        let item = graph_db.get_node(labels(), &id).expect(
+                            "Failed to read concurrently inserted entry",
+                        );
 
                         assert_eq!(item, expected_node(index));
                     }
@@ -347,14 +306,14 @@ mod tests {
 
                         work.spawn(async move {
                             let graph_db = $new_persistent(db_name)?;
-                            let item = TestNode {
+                            let item = GraphNode {
                                 id: format!("item-{index}"),
                                 labels: labels_vec(),
                                 name: format!("item-{index}"),
                                 description: Some(format!("val-{index}")),
-                                metadata: Some(TestMetadata {
-                                    val: format!("extra-{index}"),
-                                }),
+                                metadata: Some(metadata(format!(
+                                    "extra-{index}"
+                                ))),
                             };
 
                             graph_db.put_node(&item)
@@ -376,7 +335,7 @@ mod tests {
                                 && index % DELETE_EVERY == 0
                             {
                                 return graph_db
-                                    .delete_node::<TestNode>(labels(), &id)
+                                    .delete_node(labels(), &id)
                                     .map(|_| ());
                             }
 
@@ -394,11 +353,9 @@ mod tests {
 
                     for index in 0..TOTAL_COUNT {
                         let id = format!("item-{index}");
-                        let item = graph_db
-                            .get_node::<TestNode>(labels(), &id)
-                            .expect(
-                                "Failed to read concurrently inserted entry",
-                            );
+                        let item = graph_db.get_node(labels(), &id).expect(
+                            "Failed to read concurrently inserted entry",
+                        );
 
                         assert_eq!(item, expected_node(index));
                     }
@@ -412,62 +369,56 @@ mod tests {
     graph_db_impls!(graph_db_tests);
 
     fn run_crud_lifecycle(graph_db: impl GraphDbContext) {
-        let item = TestNode {
+        let item = GraphNode {
             id: "123".to_string(),
             labels: labels_vec(),
             name: "some".to_string(),
             description: Some("some-val".to_string()),
-            metadata: Some(TestMetadata {
-                val: "some-extra".to_string(),
-            }),
+            metadata: Some(metadata("some-extra")),
         };
 
         graph_db.put_node(&item).expect("Failed to put entry");
 
         let retrieved = graph_db
-            .get_node::<TestNode>(labels(), &item.id)
+            .get_node(labels(), &item.id)
             .expect("Failed to read entry");
 
         assert_eq!(retrieved, Some(item.clone()));
 
-        let updated = TestNode {
+        let updated = GraphNode {
             id: item.id.clone(),
             labels: labels_vec(),
             name: "updated".to_string(),
             description: Some("updated-val".to_string()),
-            metadata: Some(TestMetadata {
-                val: "updated-extra".to_string(),
-            }),
+            metadata: Some(metadata("updated-extra")),
         };
 
         graph_db.put_node(&updated).expect("Failed to update entry");
 
         let retrieved = graph_db
-            .get_node::<TestNode>(labels(), &updated.id)
+            .get_node(labels(), &updated.id)
             .expect("Failed to read updated entry");
 
         assert_eq!(retrieved, Some(updated.clone()));
 
-        let inserted = TestNode {
+        let inserted = GraphNode {
             id: "456".to_string(),
             labels: labels_vec(),
             name: "inserted".to_string(),
             description: Some("inserted-val".to_string()),
-            metadata: Some(TestMetadata {
-                val: "inserted-extra".to_string(),
-            }),
+            metadata: Some(metadata("inserted-extra")),
         };
         graph_db
             .put_node(&inserted)
             .expect("Failed to put missing entry");
 
         let retrieved = graph_db
-            .get_node::<TestNode>(labels(), &inserted.id)
+            .get_node(labels(), &inserted.id)
             .expect("Failed to read inserted entry");
 
         assert_eq!(retrieved, Some(inserted.clone()));
 
-        let edge = TestEdge {
+        let edge = GraphEdge {
             source_labels: updated.labels.clone(),
             source: updated.id.clone(),
             predicate: "RELATES_TO".to_string(),
@@ -484,25 +435,24 @@ mod tests {
             missing_edge_delete,
             Err(GraphError::NotFound {
                 target: GraphTarget::Edge { predicate, .. }
-            }) if predicate == edge.predicate()
+            }) if predicate == edge.predicate
         ));
 
         graph_db
-            .delete_node::<TestNode>(labels(), &inserted.id)
+            .delete_node(labels(), &inserted.id)
             .expect("Failed to delete inserted entry");
 
         graph_db
-            .delete_node::<TestNode>(labels(), &updated.id)
+            .delete_node(labels(), &updated.id)
             .expect("Failed to delete entry");
 
         let retrieved = graph_db
-            .get_node::<TestNode>(labels(), &updated.id)
+            .get_node(labels(), &updated.id)
             .expect("Failed to read deleted entry");
 
         assert_eq!(retrieved, None);
 
-        let missing_delete =
-            graph_db.delete_node::<TestNode>(labels(), &updated.id);
+        let missing_delete = graph_db.delete_node(labels(), &updated.id);
 
         assert!(matches!(
             missing_delete,
@@ -522,7 +472,7 @@ mod tests {
         }
     }
 
-    fn expected_node(index: usize) -> Option<TestNode> {
+    fn expected_node(index: usize) -> Option<GraphNode> {
         if index < EXISTING_COUNT && index.is_multiple_of(DELETE_EVERY) {
             return None;
         }
@@ -535,15 +485,17 @@ mod tests {
             format!("updated-{index}")
         };
 
-        Some(TestNode {
+        Some(GraphNode {
             id: format!("item-{index}"),
             labels: labels_vec(),
             name: format!("item-{index}"),
             description: Some(description),
-            metadata: Some(TestMetadata {
-                val: format!("extra-{index}"),
-            }),
+            metadata: Some(metadata(format!("extra-{index}"))),
         })
+    }
+
+    fn metadata(value: impl Into<String>) -> serde_json::Value {
+        serde_json::json!({ "val": value.into() })
     }
 
     fn labels() -> &'static [&'static str] {
