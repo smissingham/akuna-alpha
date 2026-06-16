@@ -31,3 +31,23 @@ pub struct GraphNode {
     /// Serializable concept metadata.
     pub metadata: Option<serde_json::Value>,
 }
+
+/// Node search request sent to graph storage.
+pub struct GraphNodeSearchQuery {
+    /// Optional label to search within.
+    pub label: Option<String>,
+    /// Search text.
+    pub query: String,
+    /// Maximum result count.
+    pub limit: usize,
+}
+
+/// Ranked graph node search result.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[cfg_attr(feature = "api", derive(utoipa::ToSchema))]
+pub struct GraphNodeSearchResult {
+    /// Matching graph node.
+    pub node: GraphNode,
+    /// Fused relevance score.
+    pub score: f64,
+}

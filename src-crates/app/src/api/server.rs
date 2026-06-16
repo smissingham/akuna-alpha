@@ -12,7 +12,7 @@ use tokio::net::TcpListener;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use utoipa::OpenApi;
 
-use akuna_core::graph::structs::{GraphEdge, GraphNode};
+use akuna_core::graph::structs::{GraphEdge, GraphNode, GraphNodeSearchResult};
 
 use crate::api::{error::ApiErrorBody, knowledge};
 
@@ -25,6 +25,7 @@ pub(crate) const OPENAPI_FILE_NAME: &str = "openapi.json";
 #[openapi(
     paths(
         knowledge::create_node,
+        knowledge::search_nodes,
         knowledge::read_node,
         knowledge::update_node,
         knowledge::delete_node,
@@ -32,7 +33,7 @@ pub(crate) const OPENAPI_FILE_NAME: &str = "openapi.json";
         knowledge::update_edge,
         knowledge::delete_edge,
     ),
-    components(schemas(ApiErrorBody, GraphNode, GraphEdge)),
+    components(schemas(ApiErrorBody, GraphNode, GraphEdge, GraphNodeSearchResult)),
     servers((url = API_SERVER))
 )]
 struct ApiDoc;

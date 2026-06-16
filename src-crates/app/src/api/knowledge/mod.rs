@@ -3,8 +3,10 @@
 use std::sync::Arc;
 
 use akuna_core::graph::{
-    storage::grafeo::GrafeoDbContext,
-    structs::{GraphEdge, GraphNode},
+    storage::grafeo::{GrafeoDbContext, search_text},
+    structs::{
+        GraphEdge, GraphNode, GraphNodeSearchQuery, GraphNodeSearchResult,
+    },
     traits::GraphDbContext,
 };
 use axum::{
@@ -26,12 +28,18 @@ pub(crate) struct ApiState {
 
 /// Registers knowledge API routes.
 pub(crate) fn router() -> Result<Router, ServiceError> {
+    Ok(router_with_graph(graph()?))
+}
+
+/// Registers knowledge API routes with graph storage.
+fn router_with_graph(graph: GrafeoDbContext) -> Router {
     let state = ApiState {
-        graph: Arc::new(graph()?),
+        graph: Arc::new(graph),
     };
 
-    Ok(Router::new()
+    Router::new()
         .route("/graph/nodes", post(create_node))
+        .route("/graph/nodes/search", get(search_nodes))
         .route(
             "/graph/nodes/{id}",
             get(read_node).put(update_node).delete(delete_node),
@@ -40,7 +48,7 @@ pub(crate) fn router() -> Result<Router, ServiceError> {
             "/graph/edges",
             post(create_edge).put(update_edge).delete(delete_edge),
         )
-        .with_state(state))
+        .with_state(state)
 }
 
 /// Query parameters for reading or deleting graph nodes.
@@ -49,6 +57,18 @@ pub(crate) fn router() -> Result<Router, ServiceError> {
 pub(crate) struct NodeQuery {
     /// Comma-separated labels scoping node ID.
     labels: String,
+}
+
+/// Query parameters for searching graph nodes.
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub(crate) struct NodeSearchQuery {
+    /// Search text.
+    q: Option<String>,
+    /// Optional label to search within.
+    labels: Option<String>,
+    /// Maximum result count. Defaults to 3. Must be 1 to 50.
+    limit: Option<usize>,
 }
 
 /// Query parameters identifying a graph edge.
@@ -84,7 +104,28 @@ pub(crate) async fn create_node(
     validate_node(&node)?;
 
     write_node(&state.graph, node)
+        .await
         .map(|node| (StatusCode::CREATED, Json(node)))
+        .map_err(Into::into)
+}
+
+#[utoipa::path(
+    get,
+    path = "/graph/nodes/search",
+    params(NodeSearchQuery),
+    responses(
+        (status = 200, description = "Node search results", body = [GraphNodeSearchResult]),
+        (status = 400, description = "Invalid request", body = ApiErrorBody),
+        (status = 500, description = "Graph operation failed", body = ApiErrorBody),
+    )
+)]
+pub(crate) async fn search_nodes(
+    State(state): State<ApiState>,
+    Query(query): Query<NodeSearchQuery>,
+) -> ApiResult<Vec<GraphNodeSearchResult>> {
+    search_graph_nodes(&state.graph, query)
+        .await
+        .map(Json)
         .map_err(Into::into)
 }
 
@@ -132,7 +173,10 @@ pub(crate) async fn update_node(
         );
     }
 
-    write_node(&state.graph, node).map(Json).map_err(Into::into)
+    write_node(&state.graph, node)
+        .await
+        .map(Json)
+        .map_err(Into::into)
 }
 
 #[utoipa::path(
@@ -216,12 +260,59 @@ pub(crate) async fn delete_edge(
 }
 
 /// Stores a graph node.
-fn write_node(
+async fn write_node(
     graph: &GrafeoDbContext,
     node: GraphNode,
 ) -> Result<GraphNode, ServiceError> {
-    graph.put_node(&node)?;
+    let embedding = embed_search_text(&search_text(&node)).await?;
+    graph.put_node(&node, &embedding)?;
     Ok(node)
+}
+
+/// Searches graph nodes.
+async fn search_graph_nodes(
+    graph: &GrafeoDbContext,
+    query: NodeSearchQuery,
+) -> Result<Vec<GraphNodeSearchResult>, ServiceError> {
+    let Some(query_text) = query.q.as_deref() else {
+        return Err(ServiceError::bad_request("q is required"));
+    };
+    let query_text = query_text.trim();
+    if query_text.is_empty() {
+        return Err(ServiceError::bad_request("q must not be empty"));
+    }
+
+    let limit = query.limit.unwrap_or(3);
+    if limit == 0 || limit > 50 {
+        return Err(ServiceError::bad_request(
+            "limit must be between 1 and 50",
+        ));
+    }
+
+    let label = match query.labels.as_deref() {
+        Some(labels) => {
+            let labels = parse_labels(labels)?;
+            if labels.len() > 1 {
+                return Err(ServiceError::bad_request(
+                    "search supports at most one label filter",
+                ));
+            }
+
+            labels.into_iter().next()
+        }
+        None => None,
+    };
+    let embedding = embed_search_text(query_text).await?;
+    graph
+        .search_nodes(
+            &GraphNodeSearchQuery {
+                label,
+                query: query_text.to_string(),
+                limit,
+            },
+            &embedding,
+        )
+        .map_err(Into::into)
 }
 
 /// Reads a graph node by ID and labels.
@@ -284,7 +375,19 @@ impl EdgeQuery {
 
 /// Validates graph node fields used in graph query syntax.
 fn validate_node(node: &GraphNode) -> Result<(), ServiceError> {
-    validate_labels(&node.labels)
+    validate_labels(&node.labels)?;
+    let Some(serde_json::Value::Object(metadata)) = node.metadata.as_ref()
+    else {
+        return Ok(());
+    };
+
+    if metadata.keys().any(|key| key.starts_with('_')) {
+        return Err(ServiceError::bad_request(
+            "metadata keys must not start with underscore",
+        ));
+    }
+
+    Ok(())
 }
 
 /// Validates graph edge fields used in graph query syntax.
@@ -343,6 +446,39 @@ fn validate_graph_identifier(
     Err(ServiceError::bad_request(format!(
         "{field} must contain only letters, numbers, or underscores"
     )))
+}
+
+/// Embeds search text for graph node indexing and querying.
+#[cfg(not(test))]
+async fn embed_search_text(text: &str) -> Result<Vec<f32>, ServiceError> {
+    akuna_core::embedding::model()
+        .await
+        .map_err(|source| ServiceError::Internal {
+            message: source.to_string(),
+        })?
+        .embed(text)
+        .map_err(|source| ServiceError::Internal {
+            message: source.to_string(),
+        })
+}
+
+/// Embeds search text deterministically in tests.
+#[cfg(test)]
+async fn embed_search_text(text: &str) -> Result<Vec<f32>, ServiceError> {
+    let lowercase = text.to_ascii_lowercase();
+    let graph = if lowercase.contains("graph") {
+        1.0
+    } else {
+        0.0
+    };
+    let database = if lowercase.contains("database") {
+        1.0
+    } else {
+        0.0
+    };
+    let rust = if lowercase.contains("rust") { 1.0 } else { 0.0 };
+
+    Ok(vec![graph, database, rust])
 }
 
 #[cfg(test)]
@@ -464,6 +600,87 @@ mod tests {
         cleanup_node(app, &target, &label).await;
     }
 
+    /// Searches nodes with default limit.
+    #[tokio::test]
+    async fn node_search() {
+        let label = test_label();
+        let suffix = unique_suffix();
+        let graph_id = format!("{suffix}_graph");
+        let rust_id = format!("{suffix}_rust");
+        let app = test_router();
+
+        let graph_node = request(
+            app.clone(),
+            Method::POST,
+            "/graph/nodes",
+            Some(json!({
+                "id": graph_id,
+                "labels": [label],
+                "name": "Graph Database",
+                "description": "native hybrid search",
+                "metadata": null
+            })),
+        )
+        .await;
+        assert_eq!(graph_node.status, StatusCode::CREATED);
+
+        let rust_node = request(
+            app.clone(),
+            Method::POST,
+            "/graph/nodes",
+            Some(json!({
+                "id": rust_id,
+                "labels": [label],
+                "name": "Rust Language",
+                "description": "systems programming",
+                "metadata": null
+            })),
+        )
+        .await;
+        assert_eq!(rust_node.status, StatusCode::CREATED);
+
+        let results = request(
+            app.clone(),
+            Method::GET,
+            "/graph/nodes/search?q=graph",
+            None,
+        )
+        .await;
+        assert_eq!(results.status, StatusCode::OK);
+        assert!(
+            results.body.as_array().expect("results should array").len() <= 3
+        );
+        assert_eq!(results.body[0]["node"]["id"], graph_id);
+
+        let invalid = request(
+            app.clone(),
+            Method::GET,
+            &format!("/graph/nodes/search?q=graph&labels={label}&limit=0"),
+            None,
+        )
+        .await;
+        assert_eq!(invalid.status, StatusCode::BAD_REQUEST);
+        assert_eq!(invalid.body["error"], "bad_request");
+
+        let missing_query =
+            request(app.clone(), Method::GET, "/graph/nodes/search", None)
+                .await;
+        assert_eq!(missing_query.status, StatusCode::BAD_REQUEST);
+        assert_eq!(missing_query.body["error"], "bad_request");
+
+        let malformed_limit = request(
+            app.clone(),
+            Method::GET,
+            &format!("/graph/nodes/search?q=graph&labels={label}&limit=bad"),
+            None,
+        )
+        .await;
+        assert_eq!(malformed_limit.status, StatusCode::BAD_REQUEST);
+
+        cleanup_node(app.clone(), &graph_id, &label).await;
+        cleanup_node(app, &rust_id, &label).await;
+    }
+
     /// Rejects labels that cannot safely map to graph query identifiers.
     #[tokio::test]
     async fn invalid_label_is_bad_request() {
@@ -486,6 +703,28 @@ mod tests {
         assert_eq!(response.body["error"], "bad_request");
     }
 
+    /// Rejects metadata keys reserved for graph internals.
+    #[tokio::test]
+    async fn reserved_metadata_is_bad_request() {
+        let app = test_router();
+        let response = request(
+            app,
+            Method::POST,
+            "/graph/nodes",
+            Some(json!({
+                "id": "reserved_metadata_node",
+                "labels": [test_label()],
+                "name": "Node",
+                "description": null,
+                "metadata": {"_id": "shadow"}
+            })),
+        )
+        .await;
+
+        assert_eq!(response.status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.body["error"], "bad_request");
+    }
+
     struct TestResponse {
         status: StatusCode,
         body: Value,
@@ -493,10 +732,7 @@ mod tests {
 
     /// Builds API router for tests.
     fn test_router() -> Router {
-        match router() {
-            Ok(router) => router,
-            Err(error) => panic!("router should initialize: {error:?}"),
-        }
+        router_with_graph(GrafeoDbContext::new_in_memory())
     }
 
     /// Creates node required for edge tests.
@@ -553,7 +789,7 @@ mod tests {
         let body = if body.is_empty() {
             Value::Null
         } else {
-            serde_json::from_slice(&body).expect("body should be json")
+            serde_json::from_slice(&body).unwrap_or(Value::Null)
         };
 
         TestResponse { status, body }

@@ -3,7 +3,9 @@
 use crate::GraphError;
 use crate::graph::{
     storage,
-    structs::{GraphEdge, GraphNode},
+    structs::{
+        GraphEdge, GraphNode, GraphNodeSearchQuery, GraphNodeSearchResult,
+    },
 };
 
 /// Typed graph storage context.
@@ -12,7 +14,11 @@ pub trait GraphDbContext {
     fn storage(&self) -> &storage::GraphStorage;
 
     /// Stores a graph node.
-    fn put_node(&self, node: &GraphNode) -> Result<(), GraphError>;
+    fn put_node(
+        &self,
+        node: &GraphNode,
+        search_embedding: &[f32],
+    ) -> Result<(), GraphError>;
 
     /// Reads a graph node by id and labels.
     fn get_node(
@@ -27,6 +33,13 @@ pub trait GraphDbContext {
         labels: &[&str],
         id: impl AsRef<str>,
     ) -> Result<(), GraphError>;
+
+    /// Searches graph nodes by hybrid text and vector relevance.
+    fn search_nodes(
+        &self,
+        query: &GraphNodeSearchQuery,
+        query_embedding: &[f32],
+    ) -> Result<Vec<GraphNodeSearchResult>, GraphError>;
 
     /// Stores a graph edge between existing node ids.
     fn put_edge(&self, edge: &GraphEdge) -> Result<(), GraphError>;

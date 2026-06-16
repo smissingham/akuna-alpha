@@ -79,7 +79,7 @@ mod tests {
                     };
 
                     graph_db
-                        .put_node(&first)
+                        .put_node(&first, embedding())
                         .expect("Failed to put first node");
                     assert_eq!(
                         graph_db
@@ -88,7 +88,9 @@ mod tests {
                         1,
                     );
 
-                    graph_db.put_node(&second).expect("Failed to upsert node");
+                    graph_db
+                        .put_node(&second, embedding())
+                        .expect("Failed to upsert node");
                     assert_eq!(
                         graph_db
                             .node_count_by_id(&["Concept", "Old"], &second.id)
@@ -157,16 +159,16 @@ mod tests {
                     };
 
                     graph_db
-                        .put_node(&old_source)
+                        .put_node(&old_source, embedding())
                         .expect("Failed to put old source");
                     graph_db
-                        .put_node(&new_source)
+                        .put_node(&new_source, embedding())
                         .expect("Failed to put new source");
                     graph_db
-                        .put_node(&old_target)
+                        .put_node(&old_target, embedding())
                         .expect("Failed to put old target");
                     graph_db
-                        .put_node(&new_target)
+                        .put_node(&new_target, embedding())
                         .expect("Failed to put new target");
 
                     graph_db
@@ -205,7 +207,7 @@ mod tests {
                         ));
 
                         graph_db
-                            .put_node(&item)
+                            .put_node(&item, embedding())
                             .expect("Failed to insert persisted entry");
                     }
 
@@ -254,7 +256,7 @@ mod tests {
                                 ))),
                             };
 
-                            graph_db.put_node(&item)
+                            graph_db.put_node(&item, embedding())
                         });
                     }
 
@@ -279,7 +281,7 @@ mod tests {
                             let item = expected_node(index)
                                 .expect("item should be present");
 
-                            graph_db.put_node(&item).map(|_| ())
+                            graph_db.put_node(&item, embedding()).map(|_| ())
                         });
                     }
 
@@ -316,7 +318,7 @@ mod tests {
                                 ))),
                             };
 
-                            graph_db.put_node(&item)
+                            graph_db.put_node(&item, embedding())
                         });
                     }
 
@@ -342,7 +344,7 @@ mod tests {
                             let item = expected_node(index)
                                 .expect("item should be present");
 
-                            graph_db.put_node(&item).map(|_| ())
+                            graph_db.put_node(&item, embedding()).map(|_| ())
                         });
                     }
 
@@ -377,7 +379,9 @@ mod tests {
             metadata: Some(metadata("some-extra")),
         };
 
-        graph_db.put_node(&item).expect("Failed to put entry");
+        graph_db
+            .put_node(&item, embedding())
+            .expect("Failed to put entry");
 
         let retrieved = graph_db
             .get_node(labels(), &item.id)
@@ -393,7 +397,9 @@ mod tests {
             metadata: Some(metadata("updated-extra")),
         };
 
-        graph_db.put_node(&updated).expect("Failed to update entry");
+        graph_db
+            .put_node(&updated, embedding())
+            .expect("Failed to update entry");
 
         let retrieved = graph_db
             .get_node(labels(), &updated.id)
@@ -409,7 +415,7 @@ mod tests {
             metadata: Some(metadata("inserted-extra")),
         };
         graph_db
-            .put_node(&inserted)
+            .put_node(&inserted, embedding())
             .expect("Failed to put missing entry");
 
         let retrieved = graph_db
@@ -496,6 +502,10 @@ mod tests {
 
     fn metadata(value: impl Into<String>) -> serde_json::Value {
         serde_json::json!({ "val": value.into() })
+    }
+
+    fn embedding() -> &'static [f32] {
+        &[1.0, 0.0, 0.0]
     }
 
     fn labels() -> &'static [&'static str] {

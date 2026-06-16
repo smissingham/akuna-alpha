@@ -9,12 +9,15 @@ use crate::{
     graph::{
         storage::GraphStorage,
         structs::{GraphEdge, GraphNode},
+        structs::{GraphNodeSearchQuery, GraphNodeSearchResult},
         traits::GraphDbContext,
     },
 };
 
 const ENGINE_NAME: &str = "grafeo";
 const NODE_ID_PROPERTY: &str = "_id";
+const SEARCH_TEXT_PROPERTY: &str = "_search_text";
+const SEARCH_EMBEDDING_PROPERTY: &str = "_search_embedding";
 
 /// Grafeo-backed graph storage context.
 pub struct GrafeoDbContext {
@@ -87,9 +90,15 @@ impl GraphDbContext for GrafeoDbContext {
         &self.storage
     }
 
-    fn put_node(&self, node: &GraphNode) -> Result<(), GraphError> {
+    fn put_node(
+        &self,
+        node: &GraphNode,
+        search_embedding: &[f32],
+    ) -> Result<(), GraphError> {
         let labels = node.labels.iter().map(String::as_str).collect::<Vec<_>>();
         let id = node.id.clone();
+        self.ensure_search_indexes(&labels, search_embedding.len())?;
+
         let mut properties = match node.metadata.as_ref() {
             Some(metadata) => {
                 let serde_json::Value::Object(properties) =
@@ -106,6 +115,9 @@ impl GraphDbContext for GrafeoDbContext {
             }
             None => Map::new(),
         };
+        if properties.keys().any(|key| is_reserved_property(key)) {
+            return Err(GraphError::InvalidNodeItem);
+        }
 
         properties.insert(
             NODE_ID_PROPERTY.to_string(),
@@ -122,6 +134,10 @@ impl GraphDbContext for GrafeoDbContext {
                 .map(serde_json::Value::String)
                 .unwrap_or(serde_json::Value::Null),
         );
+        properties.insert(
+            SEARCH_TEXT_PROPERTY.to_string(),
+            serde_json::Value::String(search_text(node)),
+        );
         let assignments = properties
             .keys()
             .enumerate()
@@ -136,6 +152,14 @@ impl GraphDbContext for GrafeoDbContext {
             params
                 .insert(format!("p{}", index), convert_json_to_grafeo(value)?);
         }
+        let embedding_param = format!("p{}", params.len());
+        params.insert(
+            embedding_param.clone(),
+            grafeo::Value::from(search_embedding),
+        );
+        let assignments = format!(
+            "{assignments}, node.{SEARCH_EMBEDDING_PROPERTY} = ${embedding_param}"
+        );
         let query = format!(
             "MERGE (node:{} {{_id: $id}}) SET {}",
             compose_gql_labels(&labels),
@@ -156,7 +180,6 @@ impl GraphDbContext for GrafeoDbContext {
                 },
                 source: Box::new(source),
             })?;
-
         Ok(())
     }
 
@@ -185,11 +208,17 @@ impl GraphDbContext for GrafeoDbContext {
             return Ok(None);
         };
 
-        let serde_json::Value::Object(mut values) =
-            convert_grafeo_to_json(value)?
-        else {
+        let grafeo::Value::Map(node_values) = value else {
             return Err(GraphError::InvalidNodeItem);
         };
+        let mut values = node_values
+            .iter()
+            .filter(|(key, _)| !is_reserved_property(key.as_str()))
+            .map(|(key, value)| {
+                convert_grafeo_to_json(value)
+                    .map(|value| (key.to_string(), value))
+            })
+            .collect::<Result<serde_json::Map<_, _>, _>>()?;
         let name = values
             .remove("name")
             .and_then(|value| value.as_str().map(ToString::to_string))
@@ -197,7 +226,6 @@ impl GraphDbContext for GrafeoDbContext {
         let description = values
             .remove("description")
             .and_then(|value| value.as_str().map(ToString::to_string));
-        values.remove(NODE_ID_PROPERTY);
         let metadata = if values.is_empty() {
             None
         } else {
@@ -260,6 +288,112 @@ impl GraphDbContext for GrafeoDbContext {
         }
 
         Ok(())
+    }
+
+    fn search_nodes(
+        &self,
+        query: &GraphNodeSearchQuery,
+        query_embedding: &[f32],
+    ) -> Result<Vec<GraphNodeSearchResult>, GraphError> {
+        let labels = match query.label.as_deref() {
+            Some(label) => vec![label.to_string()],
+            None => match self._db.schema() {
+                grafeo::admin::SchemaInfo::Lpg(schema) => {
+                    schema.labels.into_iter().map(|label| label.name).collect()
+                }
+                _ => Vec::new(),
+            },
+        };
+
+        let mut scores = HashMap::new();
+        for label in labels {
+            self.ensure_search_indexes(
+                &[label.as_str()],
+                query_embedding.len(),
+            )?;
+            let search_results = self
+                ._db
+                .hybrid_search(
+                    &label,
+                    SEARCH_TEXT_PROPERTY,
+                    SEARCH_EMBEDDING_PROPERTY,
+                    &query.query,
+                    Some(query_embedding),
+                    query.limit,
+                    None,
+                )
+                .map_err(|source| GraphError::QueryExecution {
+                    engine: ENGINE_NAME,
+                    source: Box::new(source),
+                })?;
+
+            for (node_id, score) in search_results {
+                scores
+                    .entry(node_id)
+                    .and_modify(|current| {
+                        if score > *current {
+                            *current = score;
+                        }
+                    })
+                    .or_insert(score);
+            }
+        }
+
+        let mut results = Vec::new();
+        for (node_id, score) in scores {
+            let Some(node) = self._db.get_node(node_id) else {
+                return Err(GraphError::InvalidNodeItem);
+            };
+            let node = {
+                let labels = node
+                    .labels
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>();
+                let mut values = node
+                    .properties
+                    .iter()
+                    .filter(|(key, _)| !is_reserved_property(key.as_ref()))
+                    .map(|(key, value)| {
+                        convert_grafeo_to_json(value)
+                            .map(|value| (key.to_string(), value))
+                    })
+                    .collect::<Result<serde_json::Map<_, _>, _>>()?;
+                let id = node
+                    .get_property(NODE_ID_PROPERTY)
+                    .and_then(|value| match value {
+                        grafeo::Value::String(value) => Some(value.to_string()),
+                        _ => None,
+                    })
+                    .ok_or(GraphError::InvalidNodeItem)?;
+                let name = values
+                    .remove("name")
+                    .and_then(|value| value.as_str().map(ToString::to_string))
+                    .ok_or(GraphError::InvalidNodeItem)?;
+                let description = values
+                    .remove("description")
+                    .and_then(|value| value.as_str().map(ToString::to_string));
+                values.remove(NODE_ID_PROPERTY);
+                let metadata = if values.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::Value::Object(values))
+                };
+
+                GraphNode {
+                    id,
+                    labels,
+                    name,
+                    description,
+                    metadata,
+                }
+            };
+            results.push(GraphNodeSearchResult { node, score });
+        }
+        results.sort_by(|left, right| right.score.total_cmp(&left.score));
+        results.truncate(query.limit);
+
+        Ok(results)
     }
 
     fn put_edge(&self, edge: &GraphEdge) -> Result<(), GraphError> {
@@ -403,8 +537,56 @@ impl GraphDbContext for GrafeoDbContext {
     }
 }
 
+impl GrafeoDbContext {
+    /// Ensures search indexes exist for each label.
+    fn ensure_search_indexes(
+        &self,
+        labels: &[&str],
+        dimensions: usize,
+    ) -> Result<(), GraphError> {
+        for label in labels {
+            self._db
+                .create_text_index(label, SEARCH_TEXT_PROPERTY)
+                .map_err(|source| GraphError::QueryExecution {
+                    engine: ENGINE_NAME,
+                    source: Box::new(source),
+                })?;
+            self._db
+                .create_vector_index(
+                    label,
+                    SEARCH_EMBEDDING_PROPERTY,
+                    Some(dimensions),
+                    Some("cosine"),
+                    None,
+                    None,
+                    None,
+                )
+                .map_err(|source| GraphError::QueryExecution {
+                    engine: ENGINE_NAME,
+                    source: Box::new(source),
+                })?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Builds text that backs graph node search.
+pub fn search_text(node: &GraphNode) -> String {
+    let mut parts = vec![node.name.as_str()];
+    if let Some(description) = node.description.as_deref() {
+        parts.push(description);
+    }
+
+    parts.join("\n")
+}
+
 fn compose_gql_labels(labels: &[&str]) -> String {
     labels.join(":")
+}
+
+fn is_reserved_property(key: &str) -> bool {
+    key.starts_with('_')
 }
 
 fn convert_json_to_grafeo(
@@ -443,7 +625,6 @@ fn convert_grafeo_to_json(
         grafeo::Value::Map(values) => serde_json::Value::Object(
             values
                 .iter()
-                .filter(|(key, _)| !key.as_str().starts_with('_'))
                 .map(|(key, value)| {
                     convert_grafeo_to_json(value)
                         .map(|value| (key.to_string(), value))
