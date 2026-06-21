@@ -40,10 +40,10 @@ impl From<serde_json::Error> for ServiceError {
     }
 }
 
-impl From<akuna_core::GraphError> for ServiceError {
-    fn from(source: akuna_core::GraphError) -> Self {
+impl From<akuna_core::storage::GraphError> for ServiceError {
+    fn from(source: akuna_core::storage::GraphError) -> Self {
         match source {
-            akuna_core::GraphError::NotFound { .. } => {
+            akuna_core::storage::GraphError::NotFound { .. } => {
                 Self::not_found(source.to_string())
             }
             _ => Self::Internal {

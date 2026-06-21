@@ -1,6 +1,15 @@
 [workspace]
 resolver = "3"
-members = ["src-crates/app", "src-crates/core"]
+members = [
+  "src-crates/app",
+  "src-crates/core-chunking",
+  "src-crates/core-detection",
+  "src-crates/core-embedding",
+  "src-crates/core-extraction",
+  "src-crates/core-reranking",
+  "src-crates/core-storage",
+  "src-crates/core",
+]
 
 [workspace.package]
 authors = ["Akuna Team"]
@@ -11,6 +20,7 @@ license = "MIT"
 rust-version = "1.93.1"
 
 [workspace.dependencies]
+# core foundational deps
 anyhow = "1.0.102"
 thiserror = "2.0.18"
 tokio = { version = "1.52.0", features = ["full"] }
@@ -24,6 +34,22 @@ serde_ignored = "0.1.14"
 serde_yaml = "0.9.34"
 schemars = "1.1.0"
 utoipa = "5.5.0"
+
+# burn ML stack (shared across ml sub-crates)
+burn = { version = "0.21.0-pre.3" }
+burn-wgpu = { version = "0.21.0-pre.3", default-features = false, features = ["std", "webgpu"] }
+burn-store = { version = "0.21.0-pre.3", features = ["std", "safetensors"] }
+burn-cpu = { version = "0.21.0-pre.3", default-features = false, features = ["std"] }
+
+# ML infra
+tokenizers = "0.22.2"
+hf-hub = { version = "0.5.0", default-features = false, features = ["tokio", "rustls-tls"] }
+ndarray = "0.17.2"
+onnx-ir = "0.21.0-pre.3"
+protobuf = "3.7.2"
+
+# chunking
+memchunk = "0.4.0"
 
 [workspace.lints.rust]
 missing_docs = "deny"

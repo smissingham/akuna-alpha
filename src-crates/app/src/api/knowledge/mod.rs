@@ -2,12 +2,9 @@
 
 use std::sync::Arc;
 
-use akuna_core::graph::{
-    storage::grafeo::{GrafeoDbContext, search_text},
-    structs::{
-        GraphEdge, GraphNode, GraphNodeSearchQuery, GraphNodeSearchResult,
-    },
-    traits::GraphDbContext,
+use akuna_core::storage::{
+    GraphDbContext, GraphEdge, GraphNode, GraphNodeSearchQuery,
+    GraphNodeSearchResult, search_text,
 };
 use axum::{
     Json, Router,
@@ -23,7 +20,7 @@ const GRAPH_DB_NAME: &str = "knowledge";
 
 #[derive(Clone)]
 pub(crate) struct ApiState {
-    graph: Arc<GrafeoDbContext>,
+    graph: Arc<dyn GraphDbContext>,
 }
 
 /// Registers knowledge API routes.
@@ -32,9 +29,9 @@ pub(crate) fn router() -> Result<Router, ServiceError> {
 }
 
 /// Registers knowledge API routes with graph storage.
-fn router_with_graph(graph: GrafeoDbContext) -> Router {
+fn router_with_graph(graph: Box<dyn GraphDbContext>) -> Router {
     let state = ApiState {
-        graph: Arc::new(graph),
+        graph: Arc::from(graph),
     };
 
     Router::new()
@@ -103,7 +100,7 @@ pub(crate) async fn create_node(
 ) -> Result<(StatusCode, Json<GraphNode>), ApiError> {
     validate_node(&node)?;
 
-    write_node(&state.graph, node)
+    write_node(&*state.graph, node)
         .await
         .map(|node| (StatusCode::CREATED, Json(node)))
         .map_err(Into::into)
@@ -123,7 +120,7 @@ pub(crate) async fn search_nodes(
     State(state): State<ApiState>,
     Query(query): Query<NodeSearchQuery>,
 ) -> ApiResult<Vec<GraphNodeSearchResult>> {
-    search_graph_nodes(&state.graph, query)
+    search_graph_nodes(&*state.graph, query)
         .await
         .map(Json)
         .map_err(Into::into)
@@ -144,7 +141,7 @@ pub(crate) async fn read_node(
     Path(id): Path<String>,
     Query(query): Query<NodeQuery>,
 ) -> ApiResult<GraphNode> {
-    read_graph_node(&state.graph, id, query)
+    read_graph_node(&*state.graph, id, query)
         .map(Json)
         .map_err(Into::into)
 }
@@ -173,7 +170,7 @@ pub(crate) async fn update_node(
         );
     }
 
-    write_node(&state.graph, node)
+    write_node(&*state.graph, node)
         .await
         .map(Json)
         .map_err(Into::into)
@@ -193,7 +190,7 @@ pub(crate) async fn delete_node(
     Path(id): Path<String>,
     Query(query): Query<NodeQuery>,
 ) -> Result<StatusCode, ApiError> {
-    delete_graph_node(&state.graph, id, query)
+    delete_graph_node(&*state.graph, id, query)
         .map(|()| StatusCode::NO_CONTENT)
         .map_err(Into::into)
 }
@@ -214,7 +211,7 @@ pub(crate) async fn create_edge(
 ) -> Result<(StatusCode, Json<GraphEdge>), ApiError> {
     validate_edge(&edge)?;
 
-    write_edge(&state.graph, edge)
+    write_edge(&*state.graph, edge)
         .map(|edge| (StatusCode::CREATED, Json(edge)))
         .map_err(Into::into)
 }
@@ -235,7 +232,9 @@ pub(crate) async fn update_edge(
 ) -> ApiResult<GraphEdge> {
     validate_edge(&edge)?;
 
-    write_edge(&state.graph, edge).map(Json).map_err(Into::into)
+    write_edge(&*state.graph, edge)
+        .map(Json)
+        .map_err(Into::into)
 }
 
 #[utoipa::path(
@@ -261,7 +260,7 @@ pub(crate) async fn delete_edge(
 
 /// Stores a graph node.
 async fn write_node(
-    graph: &GrafeoDbContext,
+    graph: &dyn GraphDbContext,
     node: GraphNode,
 ) -> Result<GraphNode, ServiceError> {
     let embedding = embed_search_text(&search_text(&node)).await?;
@@ -271,7 +270,7 @@ async fn write_node(
 
 /// Searches graph nodes.
 async fn search_graph_nodes(
-    graph: &GrafeoDbContext,
+    graph: &dyn GraphDbContext,
     query: NodeSearchQuery,
 ) -> Result<Vec<GraphNodeSearchResult>, ServiceError> {
     let Some(query_text) = query.q.as_deref() else {
@@ -317,13 +316,13 @@ async fn search_graph_nodes(
 
 /// Reads a graph node by ID and labels.
 fn read_graph_node(
-    graph: &GrafeoDbContext,
+    graph: &dyn GraphDbContext,
     id: String,
     query: NodeQuery,
 ) -> Result<GraphNode, ServiceError> {
     let labels = parse_labels(&query.labels)?;
     let labels = labels.iter().map(String::as_str).collect::<Vec<_>>();
-    let Some(node) = graph.get_node(&labels, id)? else {
+    let Some(node) = graph.get_node(&labels, &id)? else {
         return Err(ServiceError::not_found("knowledge node not found"));
     };
 
@@ -332,19 +331,19 @@ fn read_graph_node(
 
 /// Deletes a graph node by ID and labels.
 fn delete_graph_node(
-    graph: &GrafeoDbContext,
+    graph: &dyn GraphDbContext,
     id: String,
     query: NodeQuery,
 ) -> Result<(), ServiceError> {
     let labels = parse_labels(&query.labels)?;
     let labels = labels.iter().map(String::as_str).collect::<Vec<_>>();
-    graph.delete_node(&labels, id)?;
+    graph.delete_node(&labels, &id)?;
     Ok(())
 }
 
 /// Stores a graph edge.
 fn write_edge(
-    graph: &GrafeoDbContext,
+    graph: &dyn GraphDbContext,
     edge: GraphEdge,
 ) -> Result<GraphEdge, ServiceError> {
     graph.put_edge(&edge)?;
@@ -352,8 +351,8 @@ fn write_edge(
 }
 
 /// Opens graph database context for one API call.
-fn graph() -> Result<GrafeoDbContext, ServiceError> {
-    Ok(GrafeoDbContext::new(GRAPH_DB_NAME.to_string())?)
+fn graph() -> Result<Box<dyn GraphDbContext>, ServiceError> {
+    Ok(akuna_core::storage::open_context(GRAPH_DB_NAME)?)
 }
 
 impl EdgeQuery {
@@ -451,7 +450,13 @@ fn validate_graph_identifier(
 /// Embeds search text for graph node indexing and querying.
 #[cfg(not(test))]
 async fn embed_search_text(text: &str) -> Result<Vec<f32>, ServiceError> {
-    akuna_core::embedding::model()
+    use tokio::sync::OnceCell;
+    static MODEL: OnceCell<akuna_core::embedding::TextEmbedding> =
+        OnceCell::const_new();
+    MODEL
+        .get_or_try_init(|| async {
+            akuna_core::embedding::TextEmbedding::new(Default::default()).await
+        })
         .await
         .map_err(|source| ServiceError::Internal {
             message: source.to_string(),
@@ -732,7 +737,7 @@ mod tests {
 
     /// Builds API router for tests.
     fn test_router() -> Router {
-        router_with_graph(GrafeoDbContext::new_in_memory())
+        router_with_graph(akuna_core::storage::in_memory_context())
     }
 
     /// Creates node required for edge tests.

@@ -2,45 +2,41 @@
 
 extern crate self as akuna_core;
 
-/// Text chunking APIs.
-#[cfg(feature = "chunking")]
-pub mod chunking;
-
-/// Platform-aware application directories.
-pub mod dirs;
-
-/// File extraction APIs.
-#[cfg(feature = "extraction")]
-pub mod extraction;
-
-/// File indexing APIs.
-pub mod indexing;
-
-/// Internal testing utilities.
-#[cfg(any(test, feature = "testing"))]
-pub mod testing;
-
-/// Storage indexing & retrieval APIs.
-#[cfg(feature = "graph")]
-pub mod graph;
-
 /// Application tracing helpers.
 pub mod tracing;
 
-/// Shared public types.
-#[cfg(any(feature = "chunking", feature = "extraction", feature = "graph"))]
-pub mod types;
+/// Text chunking APIs.
+#[cfg(feature = "chunking")]
+pub mod chunking {
+    pub use akuna_core_chunking::*;
+}
 
-#[cfg(any(feature = "chunking", feature = "extraction"))]
-pub use types::extraction::*;
+/// File-type detection APIs.
+#[cfg(feature = "detection")]
+pub mod detection {
+    pub use akuna_core_detection::*;
+}
 
-#[cfg(feature = "graph")]
-pub use types::graph::*;
-
-/// Text embeddings
+/// Text embeddings.
 #[cfg(feature = "embedding")]
-pub mod embedding;
+pub mod embedding {
+    pub use akuna_core_embedding::*;
+}
 
-/// The name of the application.
-/// Used for directory names, trace logs, etc.
-pub const APP_NAME: &str = "akuna";
+/// Text reranking APIs.
+#[cfg(feature = "reranking")]
+pub mod reranking {
+    pub use akuna_core_reranking::*;
+}
+
+/// File extraction APIs.
+#[cfg(feature = "extraction")]
+pub mod extraction {
+    pub use akuna_core_extraction::*;
+}
+
+/// Graph storage and retrieval APIs.
+#[cfg(feature = "storage")]
+pub mod storage {
+    pub use akuna_core_storage::graph::*;
+}

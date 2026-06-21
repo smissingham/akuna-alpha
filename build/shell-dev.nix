@@ -133,7 +133,7 @@ pkgs.mkShell {
     export PROJECT_ROOT=$(pwd);
 
     # if present, load sops-encrypted secrets into session env
-    if [ -f "$PROJECT_ROOT/.env.enc" ]; then
+    if command -v sops >/dev/null 2>&1 && [ -f "$PROJECT_ROOT/.env.enc" ]; then
       set -a
       source <(sops -d "$PROJECT_ROOT/.env.enc")
       set +a

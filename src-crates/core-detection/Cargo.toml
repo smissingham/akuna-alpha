@@ -1,0 +1,34 @@
+[package]
+name = "akuna-core-detection"
+authors.workspace = true
+repository.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Magika file-type detection with Burn"
+readme = "README.md"
+
+[dependencies]
+burn = { workspace = true }
+burn-wgpu = { workspace = true }
+ndarray.workspace = true
+onnx-ir.workspace = true
+protobuf.workspace = true
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = "0.5.1"
+magika = "1.1.0"
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["download-binaries", "tls-rustls"] }
+burn-cpu = { workspace = true }
+
+[[bench]]
+name = "inference"
+harness = false
+
+[features]
+serde = ["dep:serde"]
+
+[lints]
+workspace = true

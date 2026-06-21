@@ -34,7 +34,7 @@ enum Command {
 /// Runs the parsed CLI command.
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
-    setup_tracing(cli.log_level.as_deref());
+    setup_tracing("akuna", cli.log_level.as_deref());
 
     match cli.command {
         Command::Extract(command) => command.run().await,

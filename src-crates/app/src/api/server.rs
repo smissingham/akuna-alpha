@@ -12,7 +12,7 @@ use tokio::net::TcpListener;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use utoipa::OpenApi;
 
-use akuna_core::graph::structs::{GraphEdge, GraphNode, GraphNodeSearchResult};
+use akuna_core::storage::{GraphEdge, GraphNode, GraphNodeSearchResult};
 
 use crate::api::{error::ApiErrorBody, knowledge};
 
@@ -56,7 +56,7 @@ pub async fn run() -> Result<()> {
         .layer(cors_layer());
     let app = Router::new().nest(API_BASE_PATH, api);
 
-    akuna_core::ak_info!("serving REST API at http://{address}");
+    tracing::info!("serving REST API at http://{address}");
     axum::serve(listener, app)
         .await
         .context("REST API server failed")

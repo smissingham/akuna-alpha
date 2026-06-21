@@ -2,6 +2,7 @@
 
 - Think like caveman. Talk like caveman. Don't waste token. (use caveman skill)
 - If user input is posed as question, do not assume to implement.
+- Focus on absolute simplicity / YAGNI. Don't make decisions or implementations before needed. Avoid technical debt.
 
 # Project
 
@@ -28,4 +29,3 @@
   - `.agents/brain/codestyle.md`
   - `.agents/brain/workflow.md`
   - check for others, load as needed
-- `opencode.json` autoloads main brain via `instructions`.

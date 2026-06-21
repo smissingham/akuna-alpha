@@ -32,7 +32,6 @@ exceptions = [
   { allow = ["bzip2-1.0.6"], name = "libbz2-rs-sys" },
 
   # hf-hub via ureq/rustls TLS stack
-  { allow = ["CDLA-Permissive-2.0"], name = "webpki-root-certs" },
   { allow = ["CDLA-Permissive-2.0"], name = "webpki-roots" },
 ]
 
