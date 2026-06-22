@@ -4,7 +4,7 @@
 //! server on top of the shared `akuna-core` workspace crate.
 //!
 //! Subcommands:
-//! - `extract`: extract metadata, content, and chunks from a file
+//! - `extract`: extract metadata and structured content parts from a file
 //! - `schemas`: generate app and OpenAPI JSON schemas
 //! - `serve`: run the local HTTP API server
 //!
@@ -12,7 +12,7 @@
 //!
 //! ```text
 //! akuna --help
-//! akuna extract ./notes.md --metadata --content
+//! akuna extract ./notes.md --metadata --text
 //! akuna serve
 //! ```
 

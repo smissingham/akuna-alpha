@@ -13,31 +13,39 @@ pub(crate) struct ExtractCommand {
     /// Include detected file metadata in the result.
     #[arg(long)]
     metadata: bool,
-    /// Include extracted text content in the result.
+    /// Print extracted text.
     #[arg(long)]
-    content: bool,
-    /// Include extracted text chunks in the result.
+    text: bool,
+    /// Include structured content parts in the result.
     #[arg(long)]
-    chunks: bool,
+    parts: bool,
 }
 
 impl ExtractCommand {
     /// Runs file extraction and prints the result.
     pub(crate) async fn run(self) -> Result<()> {
+        if self.text && !self.metadata && !self.parts {
+            let text =
+                akuna_core::extraction::extract_file_text(self.file).await?;
+            print!("{text}");
+            return Ok(());
+        }
+
         tracing::info!("extracting data from {}", self.file.display());
 
-        let full = !self.metadata && !self.content && !self.chunks;
+        let full = !self.metadata && !self.text && !self.parts;
 
         let extraction = akuna_core::extraction::extract_file(
             self.file,
             &akuna_core::extraction::ExtractionConfig {
                 return_metadata: full || self.metadata,
-                return_content: full || self.content,
-                return_chunking: full || self.chunks,
+                return_content: full || self.text,
+                return_part_chunks: false,
+                return_parts: full || self.parts,
                 text: Some(
                     akuna_core::extraction::TextExtractionConfig::default(),
                 ),
-                chunking: Some(akuna_core::chunking::ChunkingConfig::default()),
+                chunking: None,
             },
         )
         .await?;

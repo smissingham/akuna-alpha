@@ -1,20 +1,6 @@
-//! Text chunking strategies built on memchunk.
-//!
-//! Grammar-aware chunking via tree-sitter is available behind the
-//! `tree-sitter` feature flag.
-//!
-//! # Example
-//!
-//! ```rust
-//! use akuna_core::chunking::chunk_text;
-//!
-//! let content = "Hello world. Rust is great.";
-//! let chunks = chunk_text(None, content, None);
-//! assert!(!chunks.is_empty());
-//! ```
+//! Internal text chunking strategies built on memchunk.
 
-#[cfg(feature = "tree-sitter")]
-mod tree_sitter;
+pub(crate) mod tree_sitter;
 
 use std::collections::HashMap;
 
@@ -54,7 +40,6 @@ fn target_size_from_config(config: &ChunkingConfig) -> usize {
         .unwrap_or(memchunk::DEFAULT_TARGET_SIZE)
 }
 
-#[cfg(feature = "tree-sitter")]
 fn chunk_with_strategy<'a>(
     content: &'a str,
     delimiters: Option<&[u8]>,
@@ -65,16 +50,6 @@ fn chunk_with_strategy<'a>(
         .unwrap_or_else(|| {
             chunk_with_delimiters(content, delimiters, target_size)
         })
-}
-
-#[cfg(not(feature = "tree-sitter"))]
-fn chunk_with_strategy<'a>(
-    content: &'a str,
-    delimiters: Option<&[u8]>,
-    target_size: usize,
-    _file_extension: Option<&str>,
-) -> Vec<&'a str> {
-    chunk_with_delimiters(content, delimiters, target_size)
 }
 
 pub(crate) fn chunk_with_delimiters<'a>(

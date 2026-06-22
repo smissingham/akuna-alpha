@@ -3,8 +3,8 @@
 Extracts text content and metadata from files on disk. File type is detected
 via Magika and routed to a format-specific extractor — PDF, office documents,
 EPUB, or a generic text and markup fallback through omniparse — with
-`ExtractionConfig` selecting which of metadata, content, and chunks are
-returned.
+`ExtractionConfig` selecting which of metadata, content, parts, and derived
+chunks are returned.
 
 ## Usage
 
@@ -31,12 +31,18 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 | ------------------ | ---------------------------------------------------------- |
 | `return_metadata`  | Include inferred file metadata in the result.              |
 | `return_content`   | Include extracted text in the result.                      |
-| `return_chunking`  | Include text chunks in the result.                         |
+| `return_chunking`  | Include derived text chunks in returned parts.             |
 | `text`             | Optional `TextExtractionConfig` for extractor behaviour.   |
 | `chunking`         | Optional `ChunkingConfig` for chunk sizing and delimiters. |
 
 Metadata inference does not read file contents.
-Content is only read when `return_content` or `return_chunking` is enabled.
+Content is only read when `return_content`, `return_parts`, or
+`return_chunking` is enabled.
+
+When `return_chunking` and `return_parts` are enabled together, each returned
+part includes derived `segments` with local text ranges and derived `chunks`.
+Top-level `chunks` remain available as a legacy compatibility view derived from
+the canonical joined text.
 
 ## Supported Formats
 

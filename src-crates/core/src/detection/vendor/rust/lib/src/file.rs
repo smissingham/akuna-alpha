@@ -105,7 +105,7 @@ impl InferredType {
 }
 
 /// File type information.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(serde::Serialize)]
 pub struct TypeInfo {
     /// The unique label identifying this file type.
     pub label: &'static str,

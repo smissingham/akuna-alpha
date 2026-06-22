@@ -7,6 +7,8 @@
 //! ```sh
 //! cargo test -p akuna-core --test magika_parity -- --ignored --nocapture
 //! ```
+#![cfg(feature = "detection")]
+
 use std::fs;
 
 #[path = "mod.rs"]

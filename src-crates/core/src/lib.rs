@@ -1,31 +1,34 @@
 //! Akuna core knowledge tooling library.
 //!
-//! Provides optional feature-gated modules for text chunking, file-type
-//! detection, embeddings, extraction, reranking, and graph storage.
+//! Provides optional feature-gated modules for file-type detection,
+//! embeddings, extraction, reranking, and graph storage.
 //! Consumers enable only the features they need.
 //!
 //! # Modules
 //!
-//! - [`chunking`] — text chunking (feature `chunking`)
 //! - [`detection`] — file-type detection (feature `detection`)
 //! - [`embedding`] — text embeddings (feature `embedding`)
+//! - [`ocr`] — image OCR engines (feature `ocr`)
 //! - [`reranking`] — text reranking (feature `reranking`)
 //! - [`extraction`] — file extraction (feature `extraction`)
 //! - [`storage`] — graph storage and retrieval (feature `storage`)
 //!
 //! # Example
 //!
-//! Enable the `chunking` feature and call a module function:
+//! Enable the `extraction` feature and call a module function:
 //!
 //! ```no_run
-//! use akuna_core::chunking::chunk_text;
+//! use akuna_core::extraction::extract_text_bytes;
 //!
-//! let chunks = chunk_text(None, "hello\nworld", Some("txt"));
+//! # async fn example() -> Result<(), akuna_core::extraction::FileExtractionError> {
+//! let text = extract_text_bytes(b"hello\nworld", None).await?;
+//! assert_eq!(text, "hello\nworld");
+//! # Ok(())
+//! # }
 //! ```
 
-/// Text chunking APIs.
-#[cfg(feature = "chunking")]
-pub mod chunking;
+#[cfg(feature = "extraction")]
+mod chunking;
 
 /// File-type detection APIs.
 #[cfg(feature = "detection")]
@@ -38,6 +41,14 @@ pub mod embedding;
 /// Text reranking APIs.
 #[cfg(feature = "reranking")]
 pub mod reranking;
+
+/// Image OCR APIs.
+#[cfg(feature = "ocr")]
+pub mod ocr;
+
+/// Document layout detection APIs.
+#[cfg(feature = "detection")]
+pub mod layout;
 
 /// File extraction APIs.
 #[cfg(feature = "extraction")]

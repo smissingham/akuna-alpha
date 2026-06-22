@@ -1,5 +1,6 @@
 use std::path::Path;
 
+#[cfg(feature = "extraction")]
 use pdf_oxide::converters::ConversionOptions;
 
 use crate::extraction::{
@@ -33,10 +34,12 @@ pub(super) async fn extract_text(
     // handle explicit type extractions first
     let content: Option<String> = match metadata.mime_type.as_str() {
 
+        #[cfg(feature = "extraction")]
         // pdf_oxide
         "application/pdf"  // .pdf
         => Some(extract_pdf(config, file_path)?),
 
+        #[cfg(feature = "extraction")]
         // office_oxide
         "application/msword" |  // .doc
         "application/vnd.openxmlformats-officedocument.presentationml.presentation" | // .pptx
@@ -45,6 +48,7 @@ pub(super) async fn extract_text(
             Some(extract_office(config, file_path)?)
         }
 
+        #[cfg(feature = "extraction")]
         // rbook
         "application/epub+zip" //.epub
         => Some(extract_epub(file_path)?),
@@ -73,6 +77,7 @@ pub(super) async fn extract_text(
 /// # Errors
 ///
 /// Returns [`FileExtractionError`] on PDF open or text extraction failure.
+#[cfg(feature = "extraction")]
 fn extract_pdf(
     config: Option<&TextExtractionConfig>,
     file_path: &Path,
@@ -93,6 +98,7 @@ fn extract_pdf(
 /// # Errors
 ///
 /// Returns [`FileExtractionError`] on document open or text extraction failure.
+#[cfg(feature = "extraction")]
 fn extract_office(
     config: Option<&TextExtractionConfig>,
     file_path: &Path,
@@ -111,6 +117,7 @@ fn extract_office(
 /// # Errors
 ///
 /// Returns [`FileExtractionError`] on EPUB read or HTML conversion failure.
+#[cfg(feature = "extraction")]
 fn extract_epub(file_path: &Path) -> Result<String, FileExtractionError> {
     let doc = rbook::Epub::open(file_path)?;
 
@@ -170,6 +177,7 @@ fn preferred_omniparse_mime(file_type: &ExtractionMetadata) -> &str {
     }
 }
 
+#[cfg(feature = "detection")]
 impl From<crate::detection::MagikaInferenceError> for FileExtractionError {
     fn from(source: crate::detection::MagikaInferenceError) -> Self {
         Self::DetectionEngine {
@@ -179,6 +187,7 @@ impl From<crate::detection::MagikaInferenceError> for FileExtractionError {
     }
 }
 
+#[cfg(feature = "extraction")]
 impl From<pdf_oxide::Error> for FileExtractionError {
     fn from(source: pdf_oxide::Error) -> Self {
         Self::ExtractionEngine {
@@ -188,6 +197,7 @@ impl From<pdf_oxide::Error> for FileExtractionError {
     }
 }
 
+#[cfg(feature = "extraction")]
 impl From<office_oxide::OfficeError> for FileExtractionError {
     fn from(source: office_oxide::OfficeError) -> Self {
         Self::ExtractionEngine {
@@ -206,6 +216,7 @@ impl From<omniparse::Error> for FileExtractionError {
     }
 }
 
+#[cfg(feature = "extraction")]
 impl From<rbook::ebook::errors::EbookError> for FileExtractionError {
     fn from(source: rbook::ebook::errors::EbookError) -> Self {
         Self::ExtractionEngine {
@@ -215,6 +226,7 @@ impl From<rbook::ebook::errors::EbookError> for FileExtractionError {
     }
 }
 
+#[cfg(feature = "extraction")]
 impl From<rbook::ebook::errors::ArchiveError> for FileExtractionError {
     fn from(source: rbook::ebook::errors::ArchiveError) -> Self {
         Self::ExtractionEngine {
@@ -224,6 +236,7 @@ impl From<rbook::ebook::errors::ArchiveError> for FileExtractionError {
     }
 }
 
+#[cfg(feature = "extraction")]
 impl From<rbook::reader::errors::ReaderError> for FileExtractionError {
     fn from(source: rbook::reader::errors::ReaderError) -> Self {
         Self::ExtractionEngine {

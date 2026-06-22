@@ -19,58 +19,21 @@ workspace = true
 [features]
 default = []
 full = [
-  "chunking",
   "detection",
   "embedding",
   "extraction",
   "reranking",
   "storage",
+  "ocr"
 ]
 
 # Module features
-chunking = ["dep:memchunk"]
-detection = ["dep:burn", "dep:burn-wgpu", "dep:onnx-ir", "dep:protobuf"]
-embedding = ["dep:anyhow", "dep:burn", "dep:burn-wgpu", "dep:burn-store", "dep:hf-hub", "dep:serde", "dep:serde_json", "dep:tokenizers"]
-extraction = ["chunking", "detection", "dep:thiserror", "dep:serde", "dep:serde_json", "dep:tokio", "dep:pdf_oxide", "dep:office_oxide", "dep:omniparse", "dep:rbook"]
-reranking = ["dep:anyhow", "dep:burn", "dep:burn-wgpu", "dep:burn-store", "dep:hf-hub", "dep:serde", "dep:serde_json", "dep:tokenizers"]
-storage = ["dep:thiserror", "dep:serde", "dep:serde_json", "dep:grafeo"]
-
-# Cross-cutting opt-in features
-serde = ["dep:serde"]
-api = ["dep:utoipa"]
-tree-sitter = [
-  "chunking",
-  "dep:tree-sitter",
-  "dep:tree-sitter-bash",
-  "dep:tree-sitter-c",
-  "dep:tree-sitter-c-sharp",
-  "dep:tree-sitter-containerfile",
-  "dep:tree-sitter-cpp",
-  "dep:tree-sitter-css",
-  "dep:tree-sitter-dart",
-  "dep:tree-sitter-go",
-  "dep:tree-sitter-graphql",
-  "dep:tree-sitter-groovy",
-  "dep:tree-sitter-hcl",
-  "dep:tree-sitter-html",
-  "dep:tree-sitter-java",
-  "dep:tree-sitter-javascript",
-  "dep:tree-sitter-json",
-  "dep:tree-sitter-lua",
-  "dep:tree-sitter-md",
-  "dep:tree-sitter-php",
-  "dep:tree-sitter-python",
-  "dep:tree-sitter-ruby",
-  "dep:tree-sitter-rust",
-  "dep:tree-sitter-scala",
-  "dep:tree-sitter-scss",
-  "dep:tree-sitter-sequel",
-  "dep:tree-sitter-svelte-next",
-  "dep:tree-sitter-swift",
-  "dep:tree-sitter-typescript",
-  "dep:tree-sitter-vue-updated",
-  "dep:tree-sitter-yaml",
-]
+detection = ["dep:burn", "dep:burn-store", "dep:burn-wgpu", "dep:hf-hub", "dep:image", "dep:onnx-ir", "dep:protobuf", "dep:safetensors"]
+embedding = ["dep:burn", "dep:burn-wgpu", "dep:burn-store", "dep:hf-hub", "dep:tokenizers"]
+extraction = ["detection", "dep:memchunk", "dep:thiserror", "dep:tokio", "dep:omniparse", "dep:pdf_oxide", "dep:office_oxide", "dep:rbook", "dep:tree-sitter", "dep:tree-sitter-bash", "dep:tree-sitter-c", "dep:tree-sitter-c-sharp", "dep:tree-sitter-containerfile", "dep:tree-sitter-cpp", "dep:tree-sitter-css", "dep:tree-sitter-dart", "dep:tree-sitter-go", "dep:tree-sitter-graphql", "dep:tree-sitter-groovy", "dep:tree-sitter-hcl", "dep:tree-sitter-html", "dep:tree-sitter-java", "dep:tree-sitter-javascript", "dep:tree-sitter-json", "dep:tree-sitter-lua", "dep:tree-sitter-md", "dep:tree-sitter-php", "dep:tree-sitter-python", "dep:tree-sitter-ruby", "dep:tree-sitter-rust", "dep:tree-sitter-scala", "dep:tree-sitter-scss", "dep:tree-sitter-sequel", "dep:tree-sitter-svelte-next", "dep:tree-sitter-swift", "dep:tree-sitter-typescript", "dep:tree-sitter-vue-updated", "dep:tree-sitter-yaml"]
+ocr = ["detection", "dep:burn", "dep:burn-store", "dep:burn-wgpu", "dep:hf-hub", "dep:image", "dep:safetensors", "dep:half", "dep:ocrs", "dep:rten", "dep:tokenizers"]
+reranking = ["dep:burn", "dep:burn-wgpu", "dep:burn-store", "dep:hf-hub", "dep:tokenizers"]
+storage = ["dep:thiserror", "dep:grafeo"]
 
 [dependencies]
 # chunking
@@ -82,11 +45,20 @@ burn-wgpu = { workspace = true, optional = true }
 onnx-ir = { workspace = true, optional = true }
 protobuf = { workspace = true, optional = true }
 
+# shared
+anyhow = { workspace = true }
+
 # embedding + reranking
-anyhow = { workspace = true, optional = true }
 burn-store = { workspace = true, optional = true }
 hf-hub = { workspace = true, optional = true }
 tokenizers = { workspace = true, optional = true }
+
+# ocr
+half = { workspace = true, optional = true }
+image = { workspace = true, optional = true }
+ocrs = { workspace = true, optional = true }
+rten = { workspace = true, optional = true }
+safetensors = { workspace = true, optional = true }
 
 # extraction + storage
 thiserror = { workspace = true, optional = true }
@@ -101,9 +73,8 @@ tokio = { workspace = true, optional = true }
 # storage
 grafeo = { version = "0.5.42", default-features = false, features = ["embedded", "hybrid-search", "rdf", "text-index", "vector-index"], optional = true }
 
-# shared optional
-serde = { workspace = true, optional = true }
-serde_json = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 # tree-sitter grammars (optional, opt-in via tree-sitter feature)
 tree-sitter = { version = "0.26.9", optional = true }
@@ -137,8 +108,7 @@ tree-sitter-typescript = { version = "0.23.2", optional = true }
 tree-sitter-vue-updated = { version = "0.1.0", optional = true }
 tree-sitter-yaml = { version = "0.7.2", optional = true }
 
-# api (opt-in)
-utoipa = { workspace = true, optional = true }
+utoipa = { workspace = true }
 
 [dev-dependencies]
 burn-cpu = { workspace = true }

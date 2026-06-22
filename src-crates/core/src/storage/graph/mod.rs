@@ -22,8 +22,9 @@ pub enum GraphStorage {
 }
 
 /// Flexible relationship between knowledge graph nodes.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[cfg_attr(feature = "api", derive(utoipa::ToSchema))]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Deserialize, Serialize, utoipa::ToSchema,
+)]
 pub struct GraphEdge {
     /// Source node labels.
     pub source_labels: Vec<String>,
@@ -38,8 +39,7 @@ pub struct GraphEdge {
 }
 
 /// Flexible knowledge graph concept with caller-defined labels and metadata.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-#[cfg_attr(feature = "api", derive(utoipa::ToSchema))]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct GraphNode {
     /// Stable concept identifier within its labels.
     pub id: String,
@@ -64,8 +64,7 @@ pub struct GraphNodeSearchQuery {
 }
 
 /// Ranked graph node search result.
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(feature = "api", derive(utoipa::ToSchema))]
+#[derive(Clone, Debug, PartialEq, Serialize, utoipa::ToSchema)]
 pub struct GraphNodeSearchResult {
     /// Matching graph node.
     pub node: GraphNode,
