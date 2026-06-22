@@ -18,18 +18,6 @@ need_stdout = true
 command = ["./build/scripts/ws-test.sh"]
 need_stdout = true
 
-[jobs.bench]
-command = [
-  "cargo",
-  "bench",
-  "-p",
-  "akuna-core",
-  "--all-features",
-  "--",
-  "--quick"
-]
-need_stdout = true
-
 [jobs.serve]
 command = [
   "cargo",
@@ -44,5 +32,4 @@ command = [
 
 [keybindings]
 shift-a = "job:all"
-shift-b = "job:bench"
 shift-s = "job:serve"

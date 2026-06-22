@@ -4,10 +4,11 @@ mod extraction;
 mod schemas;
 mod serve;
 
-use akuna_core::tracing::{LOG_LEVELS, setup_tracing};
+use crate::tracing::{LOG_LEVELS, setup_tracing};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+/// Parsed top-level CLI input.
 #[derive(Parser)]
 #[command(version, about = "Command-line tools")]
 struct Cli {
@@ -18,6 +19,7 @@ struct Cli {
     command: Command,
 }
 
+/// Available CLI subcommands.
 #[derive(Subcommand)]
 enum Command {
     /// Extract structured metadata & content from a file.

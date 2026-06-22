@@ -5,8 +5,10 @@ use clap::Args;
 
 use crate::print_json;
 
+/// CLI arguments for the `extract` command.
 #[derive(Args)]
 pub(crate) struct ExtractCommand {
+    /// Path to the file to extract.
     file: PathBuf,
     /// Include detected file metadata in the result.
     #[arg(long)]

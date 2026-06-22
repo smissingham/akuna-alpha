@@ -18,6 +18,7 @@ use crate::api::error::{ApiError, ApiErrorBody, ApiResult, ServiceError};
 
 const GRAPH_DB_NAME: &str = "knowledge";
 
+/// Shared router state holding the graph storage backend.
 #[derive(Clone)]
 pub(crate) struct ApiState {
     graph: Arc<dyn GraphDbContext>,
@@ -84,6 +85,7 @@ pub(crate) struct EdgeQuery {
     target_labels: String,
 }
 
+/// Creates a graph node.
 #[utoipa::path(
     post,
     path = "/graph/nodes",
@@ -106,6 +108,7 @@ pub(crate) async fn create_node(
         .map_err(Into::into)
 }
 
+/// Searches graph nodes by text.
 #[utoipa::path(
     get,
     path = "/graph/nodes/search",
@@ -126,6 +129,7 @@ pub(crate) async fn search_nodes(
         .map_err(Into::into)
 }
 
+/// Reads a graph node by ID and labels.
 #[utoipa::path(
     get,
     path = "/graph/nodes/{id}",
@@ -146,6 +150,7 @@ pub(crate) async fn read_node(
         .map_err(Into::into)
 }
 
+/// Updates a graph node by ID.
 #[utoipa::path(
     put,
     path = "/graph/nodes/{id}",
@@ -176,6 +181,7 @@ pub(crate) async fn update_node(
         .map_err(Into::into)
 }
 
+/// Deletes a graph node by ID and labels.
 #[utoipa::path(
     delete,
     path = "/graph/nodes/{id}",
@@ -195,6 +201,7 @@ pub(crate) async fn delete_node(
         .map_err(Into::into)
 }
 
+/// Creates a graph edge.
 #[utoipa::path(
     post,
     path = "/graph/edges",
@@ -216,6 +223,7 @@ pub(crate) async fn create_edge(
         .map_err(Into::into)
 }
 
+/// Updates a graph edge.
 #[utoipa::path(
     put,
     path = "/graph/edges",
@@ -237,6 +245,7 @@ pub(crate) async fn update_edge(
         .map_err(Into::into)
 }
 
+/// Deletes a graph edge by identity.
 #[utoipa::path(
     delete,
     path = "/graph/edges",
@@ -448,20 +457,29 @@ fn validate_graph_identifier(
 }
 
 /// Embeds search text for graph node indexing and querying.
+///
+/// Blocking embed call is wrapped in [`tokio::task::spawn_blocking`] to avoid
+/// stalling the tokio worker on Burn forward passes.
 #[cfg(not(test))]
 async fn embed_search_text(text: &str) -> Result<Vec<f32>, ServiceError> {
     use tokio::sync::OnceCell;
     static MODEL: OnceCell<akuna_core::embedding::TextEmbedding> =
         OnceCell::const_new();
-    MODEL
+    let model = MODEL
         .get_or_try_init(|| async {
             akuna_core::embedding::TextEmbedding::new(Default::default()).await
         })
         .await
         .map_err(|source| ServiceError::Internal {
             message: source.to_string(),
+        })?;
+
+    let text = text.to_string();
+    tokio::task::spawn_blocking(move || model.embed(&text))
+        .await
+        .map_err(|source| ServiceError::Internal {
+            message: source.to_string(),
         })?
-        .embed(text)
         .map_err(|source| ServiceError::Internal {
             message: source.to_string(),
         })

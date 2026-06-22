@@ -2,12 +2,6 @@
 resolver = "3"
 members = [
   "src-crates/app",
-  "src-crates/core-chunking",
-  "src-crates/core-detection",
-  "src-crates/core-embedding",
-  "src-crates/core-extraction",
-  "src-crates/core-reranking",
-  "src-crates/core-storage",
   "src-crates/core",
 ]
 
@@ -17,25 +11,21 @@ repository = "https://github.com/akunasoftware/akuna"
 version = "0.2.0"
 edition = "2024"
 license = "MIT"
-rust-version = "1.93.1"
+rust-version = "1.96.0"
 
 [workspace.dependencies]
 # core foundational deps
 anyhow = "1.0.102"
 thiserror = "2.0.18"
 tokio = { version = "1.52.0", features = ["full"] }
-dirs = "6.0.0"
-walkdir = "2.5.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
-serde_ignored = "0.1.14"
-serde_yaml = "0.9.34"
 schemars = "1.1.0"
 utoipa = "5.5.0"
 
-# burn ML stack (shared across ml sub-crates)
+# burn ML stack (shared across feature-gated modules)
 burn = { version = "0.21.0-pre.3" }
 burn-wgpu = { version = "0.21.0-pre.3", default-features = false, features = ["std", "webgpu"] }
 burn-store = { version = "0.21.0-pre.3", features = ["std", "safetensors"] }
@@ -44,7 +34,6 @@ burn-cpu = { version = "0.21.0-pre.3", default-features = false, features = ["st
 # ML infra
 tokenizers = "0.22.2"
 hf-hub = { version = "0.5.0", default-features = false, features = ["tokio", "rustls-tls"] }
-ndarray = "0.17.2"
 onnx-ir = "0.21.0-pre.3"
 protobuf = "3.7.2"
 

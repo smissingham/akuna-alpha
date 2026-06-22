@@ -1,12 +1,13 @@
 [package]
 name = "akuna-core"
-description = "A wholistic suite of tools required for knowledge work from extraction, embedding, graphs and more."
+description = "Knowledge tooling library for extraction, chunking, embedding, reranking, and graph storage."
 authors.workspace = true
 repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+readme = "README.md"
 
 [lib]
 bench = false
@@ -26,25 +27,123 @@ full = [
   "storage",
 ]
 
-detection = ["dep:akuna-core-detection"]
-extraction = ["dep:akuna-core-extraction", "akuna-core-extraction/tree-sitter"]
-embedding = ["dep:akuna-core-embedding"]
-reranking = ["dep:akuna-core-reranking"]
-storage = ["dep:akuna-core-storage", "akuna-core-storage?/api"]
+# Module features
+chunking = ["dep:memchunk"]
+detection = ["dep:burn", "dep:burn-wgpu", "dep:onnx-ir", "dep:protobuf"]
+embedding = ["dep:anyhow", "dep:burn", "dep:burn-wgpu", "dep:burn-store", "dep:hf-hub", "dep:serde", "dep:serde_json", "dep:tokenizers"]
+extraction = ["chunking", "detection", "dep:thiserror", "dep:serde", "dep:serde_json", "dep:tokio", "dep:pdf_oxide", "dep:office_oxide", "dep:omniparse", "dep:rbook"]
+reranking = ["dep:anyhow", "dep:burn", "dep:burn-wgpu", "dep:burn-store", "dep:hf-hub", "dep:serde", "dep:serde_json", "dep:tokenizers"]
+storage = ["dep:thiserror", "dep:serde", "dep:serde_json", "dep:grafeo"]
 
-chunking = ["dep:akuna-core-chunking", "akuna-core-chunking/tree-sitter"]
+# Cross-cutting opt-in features
+serde = ["dep:serde"]
+api = ["dep:utoipa"]
+tree-sitter = [
+  "chunking",
+  "dep:tree-sitter",
+  "dep:tree-sitter-bash",
+  "dep:tree-sitter-c",
+  "dep:tree-sitter-c-sharp",
+  "dep:tree-sitter-containerfile",
+  "dep:tree-sitter-cpp",
+  "dep:tree-sitter-css",
+  "dep:tree-sitter-dart",
+  "dep:tree-sitter-go",
+  "dep:tree-sitter-graphql",
+  "dep:tree-sitter-groovy",
+  "dep:tree-sitter-hcl",
+  "dep:tree-sitter-html",
+  "dep:tree-sitter-java",
+  "dep:tree-sitter-javascript",
+  "dep:tree-sitter-json",
+  "dep:tree-sitter-lua",
+  "dep:tree-sitter-md",
+  "dep:tree-sitter-php",
+  "dep:tree-sitter-python",
+  "dep:tree-sitter-ruby",
+  "dep:tree-sitter-rust",
+  "dep:tree-sitter-scala",
+  "dep:tree-sitter-scss",
+  "dep:tree-sitter-sequel",
+  "dep:tree-sitter-svelte-next",
+  "dep:tree-sitter-swift",
+  "dep:tree-sitter-typescript",
+  "dep:tree-sitter-vue-updated",
+  "dep:tree-sitter-yaml",
+]
 
 [dependencies]
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+# chunking
+memchunk = { workspace = true, optional = true }
 
-akuna-core-chunking = { path = "../core-chunking", optional = true }
-akuna-core-detection = { path = "../core-detection", optional = true }
-akuna-core-embedding = { path = "../core-embedding", optional = true }
-akuna-core-extraction = { path = "../core-extraction", optional = true }
-akuna-core-reranking = { path = "../core-reranking", optional = true }
-akuna-core-storage = { path = "../core-storage", optional = true }
+# detection (also used by embedding + reranking)
+burn = { workspace = true, optional = true }
+burn-wgpu = { workspace = true, optional = true }
+onnx-ir = { workspace = true, optional = true }
+protobuf = { workspace = true, optional = true }
 
+# embedding + reranking
+anyhow = { workspace = true, optional = true }
+burn-store = { workspace = true, optional = true }
+hf-hub = { workspace = true, optional = true }
+tokenizers = { workspace = true, optional = true }
+
+# extraction + storage
+thiserror = { workspace = true, optional = true }
+
+# extraction
+pdf_oxide = { version = "0.3.30", default-features = false, optional = true }
+office_oxide = { version = "0.1.2", default-features = false, optional = true }
+omniparse = { version = "0.4.0", default-features = false, optional = true }
+rbook = { version = "0.7.7", default-features = false, optional = true }
+tokio = { workspace = true, optional = true }
+
+# storage
+grafeo = { version = "0.5.42", default-features = false, features = ["embedded", "hybrid-search", "rdf", "text-index", "vector-index"], optional = true }
+
+# shared optional
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+# tree-sitter grammars (optional, opt-in via tree-sitter feature)
+tree-sitter = { version = "0.26.9", optional = true }
+tree-sitter-bash = { version = "0.25.1", optional = true }
+tree-sitter-c = { version = "0.24.2", optional = true }
+tree-sitter-c-sharp = { version = "0.23.5", optional = true }
+tree-sitter-containerfile = { version = "0.8.0", optional = true }
+tree-sitter-cpp = { version = "0.23.4", optional = true }
+tree-sitter-css = { version = "0.25.0", optional = true }
+tree-sitter-dart = { version = "0.2.0", optional = true }
+tree-sitter-go = { version = "0.25.0", optional = true }
+tree-sitter-graphql = { version = "0.1.0", optional = true }
+tree-sitter-groovy = { version = "0.1.2", optional = true }
+tree-sitter-hcl = { version = "1.1.0", optional = true }
+tree-sitter-html = { version = "0.23.2", optional = true }
+tree-sitter-java = { version = "0.23.5", optional = true }
+tree-sitter-javascript = { version = "0.25.0", optional = true }
+tree-sitter-json = { version = "0.24.8", optional = true }
+tree-sitter-lua = { version = "0.5.0", optional = true }
+tree-sitter-md = { version = "0.5.3", optional = true }
+tree-sitter-php = { version = "0.24.2", optional = true }
+tree-sitter-python = { version = "0.25.0", optional = true }
+tree-sitter-ruby = { version = "0.23.1", optional = true }
+tree-sitter-rust = { version = "0.24.2", optional = true }
+tree-sitter-scala = { version = "0.26.0", optional = true }
+tree-sitter-scss = { version = "1.0.0", optional = true }
+tree-sitter-sequel = { version = "0.3.11", optional = true }
+tree-sitter-svelte-next = { version = "0.1.1", optional = true }
+tree-sitter-swift = { version = "0.7.2", optional = true }
+tree-sitter-typescript = { version = "0.23.2", optional = true }
+tree-sitter-vue-updated = { version = "0.1.0", optional = true }
+tree-sitter-yaml = { version = "0.7.2", optional = true }
+
+# api (opt-in)
+utoipa = { workspace = true, optional = true }
 
 [dev-dependencies]
-tempfile = "3.27.0"
+burn-cpu = { workspace = true }
+magika = "1.1.0"
+# ort is a transitive dep of magika; declared here to enable the
+# `download-binaries` feature so the ONNX Runtime library is fetched at build
+# time (otherwise magika fails to link).
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["download-binaries", "tls-rustls"] }

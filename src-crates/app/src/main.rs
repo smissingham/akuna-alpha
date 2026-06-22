@@ -1,8 +1,25 @@
-//! Command-line application entry point.
+//! Command-line interface for knowledge tools.
+//!
+//! Wires together extraction, schema generation, and the local REST API
+//! server on top of the shared `akuna-core` workspace crate.
+//!
+//! Subcommands:
+//! - `extract`: extract metadata, content, and chunks from a file
+//! - `schemas`: generate app and OpenAPI JSON schemas
+//! - `serve`: run the local HTTP API server
+//!
+//! # Example
+//!
+//! ```text
+//! akuna --help
+//! akuna extract ./notes.md --metadata --content
+//! akuna serve
+//! ```
 
 mod api;
 mod cli;
 mod config;
+mod tracing;
 
 use anyhow::Result;
 use serde::Serialize;

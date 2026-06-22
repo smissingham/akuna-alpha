@@ -6,8 +6,8 @@
 let
   pname = "akuna";
   cargoPackageName = "akuna";
-  version = "0.2.0";
-  rustVersion = "1.93.1";
+  version = (lib.importTOML ../Cargo.toml).workspace.package.version;
+  rustVersion = "1.96.0";
   rustToolChain = pkgs.rust-bin.stable.${rustVersion}.minimal.override {
     targets = [
       "aarch64-apple-darwin"
@@ -75,7 +75,7 @@ let
     rustc = rustToolChain;
   };
 in
-  rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage {
   inherit buildType;
   pname = pname;
   version = version;

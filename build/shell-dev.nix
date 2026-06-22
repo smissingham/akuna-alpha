@@ -41,6 +41,11 @@ let
     # Shorthand alias for main package via debug out (must have already built)
     (pkgs.writeShellScriptBin "ak" "$PROJECT_ROOT/target/debug/${pname} \"$@\"")
 
+    # Shorthand alias to serve the mdbook site live in browser
+    (pkgs.writeShellScriptBin "akbook" ''
+      mdbook serve --open "$@"
+    '')
+
     # Install main package to nix profile
     (pkgs.writeShellScriptBin "nix-install" ''
       set -euo pipefail
@@ -115,6 +120,7 @@ pkgs.mkShell {
       cargo-deny # rust dependency license checker
       sccache # rust compilation cache
       bacon # background rust code checker
+      mdbook # markdown documentation site generator
     ]
     ++ aliases
     ++ mainPackage.passthru.dependencies.build;

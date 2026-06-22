@@ -19,6 +19,7 @@ use crate::api::{error::ApiErrorBody, knowledge};
 const API_ADDRESS: &str = "127.0.0.1:9876";
 const API_BASE_PATH: &str = "/api/v1";
 const API_SERVER: &str = concatcp!("http://localhost:9876", API_BASE_PATH);
+/// File name for generated OpenAPI JSON artifact.
 pub(crate) const OPENAPI_FILE_NAME: &str = "openapi.json";
 
 #[derive(utoipa::OpenApi)]
