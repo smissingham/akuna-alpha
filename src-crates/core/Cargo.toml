@@ -1,6 +1,6 @@
 [package]
 name = "akuna-core"
-description = "Knowledge tooling library for extraction, chunking, embedding, reranking, and graph storage."
+description = "Knowledge tooling library for extraction, embedding, reranking, and graph storage."
 authors.workspace = true
 repository.workspace = true
 version.workspace = true
@@ -22,23 +22,26 @@ full = [
   "detection",
   "embedding",
   "extraction",
+  "layout",
   "reranking",
   "storage",
   "ocr"
 ]
 
 # Module features
-detection = ["dep:burn", "dep:burn-store", "dep:burn-wgpu", "dep:hf-hub", "dep:image", "dep:onnx-ir", "dep:protobuf", "dep:safetensors"]
-embedding = ["dep:burn", "dep:burn-wgpu", "dep:burn-store", "dep:hf-hub", "dep:tokenizers"]
-extraction = ["detection", "dep:memchunk", "dep:tokio", "dep:omniparse", "dep:pdf_oxide", "dep:office_oxide", "dep:rbook", "dep:tree-sitter", "dep:tree-sitter-bash", "dep:tree-sitter-c", "dep:tree-sitter-c-sharp", "dep:tree-sitter-containerfile", "dep:tree-sitter-cpp", "dep:tree-sitter-css", "dep:tree-sitter-dart", "dep:tree-sitter-go", "dep:tree-sitter-graphql", "dep:tree-sitter-groovy", "dep:tree-sitter-hcl", "dep:tree-sitter-html", "dep:tree-sitter-java", "dep:tree-sitter-javascript", "dep:tree-sitter-json", "dep:tree-sitter-lua", "dep:tree-sitter-md", "dep:tree-sitter-php", "dep:tree-sitter-python", "dep:tree-sitter-ruby", "dep:tree-sitter-rust", "dep:tree-sitter-scala", "dep:tree-sitter-scss", "dep:tree-sitter-sequel", "dep:tree-sitter-svelte-next", "dep:tree-sitter-swift", "dep:tree-sitter-typescript", "dep:tree-sitter-vue-updated", "dep:tree-sitter-yaml"]
-ocr = ["detection", "dep:burn", "dep:burn-store", "dep:burn-wgpu", "dep:hf-hub", "dep:image", "dep:safetensors", "dep:half", "dep:tokenizers"]
-reranking = ["dep:burn", "dep:burn-wgpu", "dep:burn-store", "dep:hf-hub", "dep:tokenizers"]
+detection = ["ml", "dep:burn-wgpu", "dep:onnx-ir", "dep:protobuf", "dep:safetensors"]
+embedding = ["ml", "dep:burn-wgpu", "dep:tokenizers"]
+extraction = ["detection", "dep:tokio", "dep:omniparse", "dep:pdf_oxide", "dep:office_oxide", "dep:rbook", "dep:tree-sitter", "dep:tree-sitter-bash", "dep:tree-sitter-c", "dep:tree-sitter-c-sharp", "dep:tree-sitter-containerfile", "dep:tree-sitter-cpp", "dep:tree-sitter-css", "dep:tree-sitter-dart", "dep:tree-sitter-go", "dep:tree-sitter-graphql", "dep:tree-sitter-groovy", "dep:tree-sitter-hcl", "dep:tree-sitter-html", "dep:tree-sitter-java", "dep:tree-sitter-javascript", "dep:tree-sitter-json", "dep:tree-sitter-lua", "dep:tree-sitter-md", "dep:tree-sitter-php", "dep:tree-sitter-python", "dep:tree-sitter-ruby", "dep:tree-sitter-rust", "dep:tree-sitter-scala", "dep:tree-sitter-scss", "dep:tree-sitter-sequel", "dep:tree-sitter-svelte-next", "dep:tree-sitter-swift", "dep:tree-sitter-typescript", "dep:tree-sitter-vue-updated", "dep:tree-sitter-yaml"]
+layout = ["ml", "dep:burn-wgpu", "dep:image", "dep:safetensors"]
+ml = ["dep:burn", "dep:burn-store", "dep:hf-hub"]
+ocr = ["layout", "dep:half", "dep:tokenizers"]
+reranking = ["ml", "dep:burn-wgpu", "dep:tokenizers"]
 storage = ["dep:grafeo"]
 
-[dependencies]
-# chunking
-memchunk = { workspace = true, optional = true }
+[package.metadata.docs.rs]
+all-features = true
 
+[dependencies]
 # detection (also used by embedding + reranking)
 burn = { workspace = true, optional = true }
 burn-wgpu = { workspace = true, optional = true }
@@ -109,7 +112,6 @@ tree-sitter-yaml = { version = "0.7.2", optional = true }
 utoipa = { workspace = true }
 
 [dev-dependencies]
-ahash = "0.8.12"
 burn-cpu = { workspace = true }
 magika = "1.1.0"
 # ort is a transitive dep of magika; declared here to enable the

@@ -15,7 +15,7 @@
 // DO NOT EDIT, see link below for more information:
 // https://github.com/google/magika/tree/main/rust/gen
 
-use crate::detection::file::TypeInfo;
+use super::file::TypeInfo;
 
 /// Model name (only comparable with equality).
 pub const MODEL_NAME: &str = "standard_v3_3";
@@ -1906,7 +1906,8 @@ pub(crate) static XLS: TypeInfo = TypeInfo {
 
 pub(crate) static XLSB: TypeInfo = TypeInfo {
     label: "xlsb",
-    mime_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    mime_type:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     group: "document",
     description: "Microsoft Excel 2007+ document (binary format)",
     extensions: &["xlsb"],
@@ -1915,7 +1916,8 @@ pub(crate) static XLSB: TypeInfo = TypeInfo {
 
 pub(crate) static XLSX: TypeInfo = TypeInfo {
     label: "xlsx",
-    mime_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    mime_type:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     group: "document",
     description: "Microsoft Excel 2007+ document",
     extensions: &["xlsx", "xlsm"],

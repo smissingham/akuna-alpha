@@ -1,5 +1,15 @@
 //! File-type detection using Magika and Burn.
 //!
+//! Classifies raw bytes or files into typed labels with confidence scores.
+//! The Magika weights are embedded in the binary, so no model download is
+//! needed at runtime.
+//!
+//! # Models
+//!
+//! Backed by [`DetectionModel`][crate::detection::DetectionModel]:
+//!
+//! - `Magika` — Google Magika file-type classifier (weights embedded in the binary)
+//!
 //! # Example
 //!
 //! ```rust,no_run
@@ -16,15 +26,19 @@
 //! ```
 
 mod config;
-mod content {
-    pub use crate::detection::vendor::content::*;
-}
-mod file;
-/// Burn-backed Magika classifier implementation.
-pub(crate) mod model;
-mod preprocess;
+pub(crate) mod models;
 mod session;
 mod vendor;
+
+/// Supported file-type detection models.
+///
+/// Detection ships an embedded Magika model; see [`Session`] for loading.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DetectionModel {
+    /// Google Magika file-type classifier (weights embedded in the binary).
+    #[default]
+    Magika,
+}
 
 /// One ranked label guess produced by the classifier.
 #[derive(Debug, Clone, PartialEq)]
@@ -51,6 +65,6 @@ pub struct Detection {
 }
 
 pub use config::ModelConfig;
-pub use file::{FileType, InferredType, OverwriteReason, TypeInfo};
-pub use model::MagikaInferenceError;
+pub use models::magika::MagikaInferenceError;
 pub use session::{DefaultSession, Session};
+pub use vendor::file::{FileType, InferredType, OverwriteReason, TypeInfo};

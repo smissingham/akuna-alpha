@@ -1,6 +1,6 @@
 # Text Reranking
 
-Cross-encoder text reranking models (BGE-reranker-base, Jina-reranker-v2) built on [Burn](https://github.com/tracel-ai/burn).
+Cross-encoder text reranking models built on [Burn](https://github.com/tracel-ai/burn).
 
 ## Usage
 
@@ -79,26 +79,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Models
 
-`RerankerModel::BgeRerankerBase` is the default. Available variants:
-
-- `RerankerModel::BgeRerankerBase`
-- `RerankerModel::JinaRerankerV2BaseMultilingual`
-
-```rust,no_run
-use akuna_core::reranking::{RerankerModel, TextReranker, TextRerankerOptions};
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = TextReranker::new(TextRerankerOptions {
-        model: RerankerModel::JinaRerankerV2BaseMultilingual,
-        ..Default::default()
-    })
-    .await?;
-
-    // `score` is blocking; see the Usage section above.
-    let score = model.score("machine learning", "apprendimento automatico")?;
-    assert!(score.is_finite());
-
-    Ok(())
-}
-```
+The built-in reranker is `BAAI/bge-reranker-base`.

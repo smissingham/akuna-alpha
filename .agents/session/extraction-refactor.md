@@ -3,7 +3,7 @@
 Goal: state-of-art file extraction surface with simple top-level API.
 
 Boundaries:
-- `extraction` owns domain model: documents, parts, metadata, provenance, chunks.
+- `extraction` owns domain model: documents, parts, metadata.
 - `ocr` owns OCR ML/runtime and can be disabled.
 - Heavy features must be optional.
 - Public surface stays simple: bytes, text, content.
@@ -12,8 +12,7 @@ Current decisions:
 - Keep OCR runtime isolated under `core::ocr`.
 - Move PP-DocLayout layout detector to `core::layout` so layout can run without OCR.
 - Build extraction around canonical `ExtractedDocument`/parts IR.
-- Derive simple text/chunks from parts/content.
-- Add provenance and ranges before OCR adapter.
+- Derive text from parts/content.
 
 Implemented:
 - `extraction-text`: light byte/text/omniparse extraction, no Burn/OCR/docs.

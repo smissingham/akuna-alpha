@@ -27,7 +27,7 @@ All of the below features, while preserving the following key values:
 
 - Sophisticated Tooling
   - Document extraction
-  - Content chunking
+  - Structured content parts
   - Entity recognition & reification (WIP)
   - Hardware accelerated vector embedding
   - Graph storage & traversal (WIP)
@@ -48,9 +48,10 @@ Use `full` to enable all feature-gated APIs.
 
 | Module          | Cargo Feature | Description                                          |
 | --------------- | ------------- | ---------------------------------------------------- |
-| `extraction`    | `extraction`  | Extracts file metadata, text content, and chunks.    |
-| `chunking`      | `chunking`    | Splits text using configured delimiters and size.    |
+| `extraction`    | `extraction`  | Extracts file metadata, text content, and parts.     |
 | `embedding`     | `embedding`   | Loads text embedding models and embeds text batches. |
+| `layout`        | `layout`      | Detects document layout blocks in images.            |
+| `ocr`           | `ocr`         | Extracts text blocks from images.                    |
 | `storage`       | `storage`     | Provides graph primitives, types, and storage APIs.  |
 | `reranking`     | `reranking`   | ML reranking of retrieved candidates.                |
 | `detection`     | `detection`   | File type inference (Rust native Magika).            |
@@ -66,5 +67,4 @@ Module source lives under [`./src-crates/core/src/`](./src-crates/core/src/).
 
 ## Documentation
 
-- `akdoc` — alias to `cargo doc` for rustdoc rendering of the workspace.
-- `akbook` — alias to `mdbook` for viewing the project book.
+- `akdoc <crate>` — alias to `cargo doc --no-deps --all-features --open -p <crate>`, mirroring docs.rs output for the named crate.

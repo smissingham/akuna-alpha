@@ -19,36 +19,37 @@ pub(crate) struct ExtractCommand {
     /// Include structured content parts in the result.
     #[arg(long)]
     parts: bool,
+    /// Include source provenance for structured parts.
+    #[arg(long)]
+    provenance: bool,
 }
 
 impl ExtractCommand {
     /// Runs file extraction and prints the result.
     pub(crate) async fn run(self) -> Result<()> {
-        if self.text && !self.metadata && !self.parts {
-            let text =
-                akuna_core::extraction::extract_file_text(self.file).await?;
-            print!("{text}");
-            return Ok(());
-        }
-
         tracing::info!("extracting data from {}", self.file.display());
 
-        let full = !self.metadata && !self.text && !self.parts;
+        let full =
+            !self.metadata && !self.text && !self.parts && !self.provenance;
 
         let extraction = akuna_core::extraction::extract_file(
             self.file,
             &akuna_core::extraction::ExtractionConfig {
                 return_metadata: full || self.metadata,
                 return_content: full || self.text,
-                return_part_segments: false,
-                return_parts: full || self.parts,
-                text: Some(
-                    akuna_core::extraction::TextExtractionConfig::default(),
-                ),
-                chunking: None,
+                return_parts: full || self.parts || self.provenance,
+                return_provenance: full || self.provenance,
             },
         )
         .await?;
+
+        if self.text && !self.metadata && !self.parts && !self.provenance {
+            let text = extraction.text.ok_or_else(|| {
+                anyhow::anyhow!("no text content extracted for file")
+            })?;
+            print!("{text}");
+            return Ok(());
+        }
 
         print_json(&extraction)
     }

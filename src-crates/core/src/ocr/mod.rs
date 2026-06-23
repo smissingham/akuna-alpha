@@ -1,30 +1,53 @@
-//! Image OCR engines and OCR-specific result geometry.
+//! Image OCR engines and OCR-specific result geometry built with Burn.
 //!
-//! Keep OCR-specific ML/runtime concerns here.
-//! Domain extraction structures live in [`crate::extraction`].
+//! Runs a detector + recognizer pipeline over page images. Domain extraction
+//! structures live in [`crate::extraction`].
+//!
+//! # Models
+//!
+//! Region detection via [`OcrDetector`][crate::ocr::OcrDetector]
+//! (defaults to `PpOcrV6MediumDet`):
+//!
+//! - `PpDocLayout` — PP-DocLayoutV3 region detector
+//! - `PpOcrV6TinyDet` / `PpOcrV6SmallDet` / `PpOcrV6MediumDet` — PaddleOCR PP-OCRv6 detectors
+//! - `None` — recognize the whole image without region detection
+//!
+//! Text recognition via [`OcrRecognizer`][crate::ocr::OcrRecognizer]
+//! (defaults to `PpOcrV6MediumRec`):
+//!
+//! - `GlmOcr` — Z.ai GLM OCR recognizer
+//! - `PpOcrV6TinyRec` / `PpOcrV6SmallRec` / `PpOcrV6MediumRec` — PaddleOCR PP-OCRv6 recognizers
+//!
+//! # Example
+//!
+//! ```rust,no_run
+//! use akuna_core::ocr::{Ocr, OcrOptions};
+//!
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let ocr = Ocr::new(OcrOptions::default()).await?;
+//! # Ok(())
+//! # }
+//! ```
 
 mod error;
-mod glm_ocr;
-mod layout;
+mod models;
 mod output;
-mod pp_ocr;
 
 use std::path::{Path, PathBuf};
 
 use burn::tensor::backend::Backend;
 use burn_wgpu::{Wgpu, WgpuDevice};
 
-use self::glm_ocr::{GlmOcrModel, GlmOcrVariant, load_glm_ocr};
-use self::layout::{
+use self::models::glm_layout::{
     crop_text_region, text_like_detection, useful_ocr_fragment,
 };
-use self::pp_ocr::runtime::PpOcrRuntime;
-use self::pp_ocr::spec::PpOcrV6Tier;
-use crate::layout::pp_doclayout::{
+use self::models::glm_ocr::{GlmOcrModel, load_glm_ocr};
+use self::models::pp_ocr::runtime::PpOcrRuntime;
+use self::models::pp_ocr::spec::PpOcrV6Tier;
+use crate::layout::models::pp_doclayout::{
     PpDocLayoutRuntime, load_pp_doclayout_runtime,
 };
 pub use error::OcrError;
-pub(crate) use output::Rect;
 pub use output::{OcrBlock, OcrBlockKind, OcrPage, OcrRect};
 
 /// Default OCR backend.
@@ -44,7 +67,6 @@ enum LoadedOcrModel<B: Backend> {
 }
 
 /// Region detection strategy.
-#[non_exhaustive]
 #[derive(
     Debug,
     Clone,
@@ -71,7 +93,6 @@ pub enum OcrDetector {
 }
 
 /// Text recognition strategy.
-#[non_exhaustive]
 #[derive(
     Debug,
     Clone,
@@ -138,13 +159,9 @@ where
                 )
                 .await
                 .map_err(|source| OcrError::Load { source })?;
-                let recognizer = load_glm_ocr(
-                    device,
-                    GlmOcrVariant::OnnxCommunity,
-                    options.cache_dir,
-                )
-                .await
-                .map_err(|source| OcrError::Load { source })?;
+                let recognizer = load_glm_ocr(device, options.cache_dir)
+                    .await
+                    .map_err(|source| OcrError::Load { source })?;
                 LoadedOcrModel::LayoutGlm {
                     layout: Box::new(layout),
                     recognizer: Box::new(recognizer),
@@ -152,13 +169,9 @@ where
             }
             (OcrDetector::None, OcrRecognizer::GlmOcr) => {
                 LoadedOcrModel::Glm(Box::new(
-                    load_glm_ocr(
-                        device,
-                        GlmOcrVariant::OnnxCommunity,
-                        options.cache_dir,
-                    )
-                    .await
-                    .map_err(|source| OcrError::Load { source })?,
+                    load_glm_ocr(device, options.cache_dir)
+                        .await
+                        .map_err(|source| OcrError::Load { source })?,
                 ))
             }
             (OcrDetector::PpOcrV6TinyDet, OcrRecognizer::PpOcrV6TinyRec) => {
@@ -220,14 +233,6 @@ where
         })
     }
 
-    /// Extracts text from an image file.
-    pub fn extract_file(
-        &self,
-        path: impl AsRef<Path>,
-    ) -> Result<String, OcrError> {
-        Ok(self.extract_page_file(path)?.plain_text())
-    }
-
     /// Extracts OCR blocks from an image file.
     pub fn extract_page_file(
         &self,
@@ -241,11 +246,6 @@ where
             })?;
 
         self.extract_page_bytes(&bytes)
-    }
-
-    /// Extracts text from encoded image bytes.
-    pub fn extract_bytes(&self, bytes: &[u8]) -> Result<String, OcrError> {
-        Ok(self.extract_page_bytes(bytes)?.plain_text())
     }
 
     /// Extracts OCR blocks from encoded image bytes.
@@ -281,11 +281,9 @@ where
     /// Returns configured detector and recognizer.
     pub fn pipeline(&self) -> (OcrDetector, OcrRecognizer) {
         match &self.model {
-            LoadedOcrModel::Glm(model) => match model.variant() {
-                GlmOcrVariant::OnnxCommunity => {
-                    (OcrDetector::None, OcrRecognizer::GlmOcr)
-                }
-            },
+            LoadedOcrModel::Glm(_) => {
+                (OcrDetector::None, OcrRecognizer::GlmOcr)
+            }
             LoadedOcrModel::LayoutGlm { .. } => {
                 (OcrDetector::PpDocLayout, OcrRecognizer::GlmOcr)
             }

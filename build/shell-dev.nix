@@ -41,9 +41,16 @@ let
     # Shorthand alias for main package via debug out (must have already built)
     (pkgs.writeShellScriptBin "ak" "$PROJECT_ROOT/target/debug/${pname} \"$@\"")
 
-    # Shorthand alias to serve the mdbook site live in browser
-    (pkgs.writeShellScriptBin "akbook" ''
-      mdbook serve --open "$@"
+    # Shorthand alias to build and open rustdoc for a specific crate in browser.
+    # Usage: akdoc <crate-name>. Clears target/doc first; mirrors docs.rs:
+    # all features enabled, deps excluded.
+    (pkgs.writeShellScriptBin "akdoc" ''
+      if [ $# -eq 0 ]; then
+        echo "usage: akdoc <crate-name>" >&2
+        exit 1
+      fi
+      rm -rf "$PROJECT_ROOT/target/doc"
+      cargo doc --no-deps --all-features --open -p "$1"
     '')
 
     # Install main package to nix profile
@@ -112,6 +119,9 @@ pkgs.mkShell {
       jq
       yq
 
+      # services cli's
+      python3Packages.huggingface-hub
+
       # language & framework tools
       rustToolChain
       cargo-bloat # rust binary size inspection
@@ -120,7 +130,6 @@ pkgs.mkShell {
       cargo-deny # rust dependency license checker
       sccache # rust compilation cache
       bacon # background rust code checker
-      mdbook # markdown documentation site generator
     ]
     ++ aliases
     ++ mainPackage.passthru.dependencies.build;
@@ -138,12 +147,8 @@ pkgs.mkShell {
   shellHook = ''
     export PROJECT_ROOT=$(pwd);
 
-    # if present, load sops-encrypted secrets into session env
-    if command -v sops >/dev/null 2>&1 && [ -f "$PROJECT_ROOT/.env.enc" ]; then
-      set -a
-      source <(sops -d "$PROJECT_ROOT/.env.enc")
-      set +a
-    fi
+    # set env using workspace env script (so it can still be used by non-nix users)
+    . "$PROJECT_ROOT/build/scripts/ws-env.sh"
   '';
 
 }

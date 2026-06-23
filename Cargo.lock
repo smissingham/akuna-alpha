@@ -87,7 +87,6 @@ dependencies = [
 name = "akuna-core"
 version = "0.2.0"
 dependencies = [
- "ahash",
  "anyhow",
  "burn",
  "burn-cpu",
@@ -98,7 +97,6 @@ dependencies = [
  "hf-hub",
  "image 0.25.10",
  "magika",
- "memchunk",
  "office_oxide",
  "omniparse",
  "onnx-ir",
@@ -596,7 +594,7 @@ dependencies = [
  "clang-sys",
  "itertools 0.13.0",
  "log",
- "prettyplease",
+ "prettyplease 0.2.37",
  "proc-macro2",
  "quote",
  "regex",
@@ -1098,6 +1096,27 @@ checksum = "93e4acd90806fa8663610f1071f3a8992eb98637d2d0816ee3062b334f61af00"
 dependencies = [
  "burn-core",
  "num-traits",
+]
+
+[[package]]
+name = "burn-onnx"
+version = "0.21.0-pre.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "862c5a20d60f48fb11364c8c8c96462bc03e47e8cfb12d06ded93833f67e6a7b"
+dependencies = [
+ "burn",
+ "burn-ndarray",
+ "burn-store",
+ "clap",
+ "derive-new",
+ "log",
+ "onnx-ir",
+ "proc-macro2",
+ "quote",
+ "rust-format",
+ "syn 2.0.117",
+ "tracing-core",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1771,6 +1790,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "cookie"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ddef33a339a91ea89fb53151bd0a4689cfce27055c291dfa69945475d22c747"
+dependencies = [
+ "percent-encoding",
+ "time",
+ "version_check",
+]
+
+[[package]]
+name = "cookie_store"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15b2c103cf610ec6cae3da84a766285b42fd16aad564758459e6ecf128c75206"
+dependencies = [
+ "cookie",
+ "document-features",
+ "idna",
+ "indexmap",
+ "log",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "time",
+ "url",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2204,7 +2252,7 @@ dependencies = [
  "derive-new",
  "ident_case",
  "inflections",
- "prettyplease",
+ "prettyplease 0.2.37",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -3989,6 +4037,7 @@ checksum = "aef3982638978efa195ff11b305f51f1f22f4f0a6cabee7af79b383ebee6a213"
 dependencies = [
  "dirs",
  "futures",
+ "http",
  "indicatif",
  "libc",
  "log",
@@ -3999,6 +4048,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+ "ureq 3.3.0",
  "windows-sys 0.61.2",
 ]
 
@@ -4981,15 +5031,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
 
 [[package]]
-name = "memchunk"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05a7f8b3f1c13732f399ca4a423814fce7f3ee954072601f2c7d44c9fe1ae329"
-dependencies = [
- "memchr",
-]
-
-[[package]]
 name = "memmap2"
 version = "0.9.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5543,9 +5584,9 @@ dependencies = [
 
 [[package]]
 name = "onnx-ir"
-version = "0.21.0"
+version = "0.21.0-pre.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "676d0888e988bdeb7b7598fec5a83f493e91139d513677304e6f67a894926862"
+checksum = "e0d8ad46b52ef5cd97b3bb2843acf61d9fae5325dca480a82442b7d9cc264086"
 dependencies = [
  "burn-tensor",
  "bytemuck",
@@ -5564,9 +5605,9 @@ dependencies = [
 
 [[package]]
 name = "onnx-ir-derive"
-version = "0.21.0"
+version = "0.21.0-pre.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6972f2dcc538c2ade166f24599518f36dae540c2e16701c60445cf8e911de3a9"
+checksum = "16186154431dd3d24a7ff1653929e279919b1b42f9db2e3f15eb693c2cd8e769"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6064,6 +6105,16 @@ name = "presser"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8cf8e6a8aa66ce33f63993ffc4ea4271eb5b0530a9002db8455ea6050c77bfa"
+
+[[package]]
+name = "prettyplease"
+version = "0.1.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c8646e95016a7a6c4adea95bafa8a16baab64b583356217f2c85db4a39d9a86"
+dependencies = [
+ "proc-macro2",
+ "syn 1.0.109",
+]
 
 [[package]]
 name = "prettyplease"
@@ -6867,6 +6918,17 @@ dependencies = [
  "hashlink",
  "libsqlite3-sys",
  "smallvec",
+]
+
+[[package]]
+name = "rust-format"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60e7c00b6c3bf5e38a880eec01d7e829d12ca682079f8238a464def3c4b31627"
+dependencies = [
+ "prettyplease 0.1.25",
+ "proc-macro2",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -8852,10 +8914,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dea7109cdcd5864d4eeb1b58a1648dc9bf520360d7af16ec26d0a9354bafcfc0"
 dependencies = [
  "base64 0.22.1",
+ "cookie_store",
+ "flate2",
  "log",
  "percent-encoding",
  "rustls",
  "rustls-pki-types",
+ "serde",
+ "serde_json",
  "socks",
  "ureq-proto",
  "utf8-zero",
@@ -9827,7 +9893,7 @@ dependencies = [
  "anyhow",
  "heck",
  "indexmap",
- "prettyplease",
+ "prettyplease 0.2.37",
  "syn 2.0.117",
  "wasm-metadata",
  "wit-bindgen-core",
@@ -9841,7 +9907,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c0f9bfd77e6a48eccf51359e3ae77140a7f50b1e2ebfe62422d8afdaffab17a"
 dependencies = [
  "anyhow",
- "prettyplease",
+ "prettyplease 0.2.37",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -9932,6 +9998,20 @@ name = "xml-rs"
 version = "0.8.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
+
+[[package]]
+name = "xtask"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "burn-onnx",
+ "onnx-ir",
+ "protobuf",
+ "serde_json",
+ "tokio",
+ "tracing-subscriber",
+ "ureq 3.3.0",
+]
 
 [[package]]
 name = "xxhash-rust"

@@ -1,22 +1,19 @@
 use std::path::Path;
 
-use crate::extraction::{
-    ExtractionMetadata, FileExtractionError, TextExtractionConfig,
-};
+use crate::extraction::{ExtractionMetadata, FileExtractionError};
 
 const EXPLICIT_UNSUPPORTED_MIMES: &[&str] = &[
     "application/zip",                         // .zip
     "application/vnd.oasis.opendocument.text", // .odt
 ];
 
-/// Extract text (Markdown when supported) from a file using detected type info.
+/// Extract text from a file using detected type info.
 ///
 /// # Errors
 ///
 /// Returns [`FileExtractionError`] for unsupported MIME types, parser failures,
 /// or missing text content.
 pub(super) async fn extract_text(
-    _config: Option<&TextExtractionConfig>,
     file_path: &Path,
     metadata: &ExtractionMetadata,
 ) -> Result<String, FileExtractionError> {
@@ -42,6 +39,10 @@ pub(super) async fn extract_text(
         return Ok(content);
     }
 
+    if is_structured_text_mime(&metadata.mime_type) {
+        return Ok(tokio::fs::read_to_string(file_path).await?);
+    }
+
     // basic text fallback
     if metadata.is_text {
         return extract_multi(metadata, file_path).await;
@@ -50,6 +51,18 @@ pub(super) async fn extract_text(
     // make no more attempts, do not just loop-try with generic parsers
     // throw explicit failure and come back to improve lib + add test case
     Err(unsupported_error)
+}
+
+fn is_structured_text_mime(mime_type: &str) -> bool {
+    matches!(
+        mime_type,
+        "application/rss+xml"
+            | "application/xhtml+xml"
+            | "application/xml"
+            | "text/html"
+            | "text/markdown"
+            | "text/xml"
+    )
 }
 
 /// Extract text from an EPUB by rendering each chapter to HTML then plain text.

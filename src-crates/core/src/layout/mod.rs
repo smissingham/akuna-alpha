@@ -1,7 +1,26 @@
-//! Document layout detection.
+//! Document layout detection built with Burn.
 //!
-//! Layout detection is separate from OCR so callers can use page structure
-//! without enabling text recognition engines.
+//! Detects reading-order layout blocks (text, title, list, table, figure)
+//! from page images. Layout detection is separate from OCR so callers can
+//! use page structure without enabling text recognition engines.
+//!
+//! # Models
+//!
+//! Select a checkpoint via [`LayoutModel`][crate::layout::LayoutModel]
+//! (defaults to `PpDocLayoutV3`):
+//!
+//! - `PpDocLayoutV3` — `PaddlePaddle/PP-DocLayoutV3_safetensors`
+//!
+//! # Example
+//!
+//! ```rust,no_run
+//! use akuna_core::layout::{LayoutDetector, LayoutOptions};
+//!
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let detector = LayoutDetector::new(LayoutOptions::default()).await?;
+//! # Ok(())
+//! # }
+//! ```
 
 use std::path::PathBuf;
 
@@ -9,9 +28,9 @@ use burn::tensor::backend::Backend;
 use burn_wgpu::{Wgpu, WgpuDevice};
 use image::DynamicImage;
 
-pub(crate) mod pp_doclayout;
+pub(crate) mod models;
 
-use crate::layout::pp_doclayout::{
+use crate::layout::models::pp_doclayout::{
     PpDocLayoutRuntime, load_pp_doclayout_runtime,
 };
 
@@ -21,9 +40,19 @@ pub type DefaultLayoutBackend = Wgpu;
 /// Default layout device.
 pub type DefaultLayoutDevice = WgpuDevice;
 
+/// Supported document layout model checkpoints.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LayoutModel {
+    /// `PaddlePaddle/PP-DocLayoutV3_safetensors`.
+    #[default]
+    PpDocLayoutV3,
+}
+
 /// Layout detector options.
 #[derive(Debug, Clone, Default)]
 pub struct LayoutOptions {
+    /// Which layout checkpoint to load.
+    pub model: LayoutModel,
     /// Optional model download cache directory.
     pub cache_dir: Option<PathBuf>,
 }
@@ -137,9 +166,13 @@ where
         device: &B::Device,
         options: LayoutOptions,
     ) -> Result<Self, LayoutError> {
-        let runtime = load_pp_doclayout_runtime(device, options.cache_dir)
-            .await
-            .map_err(|source| LayoutError::Load { source })?;
+        let runtime = match options.model {
+            LayoutModel::PpDocLayoutV3 => {
+                load_pp_doclayout_runtime(device, options.cache_dir)
+                    .await
+                    .map_err(|source| LayoutError::Load { source })?
+            }
+        };
 
         Ok(Self {
             runtime,

@@ -1,4 +1,18 @@
-//! Simple text embedding models built with Burn.
+//! Dense text embeddings built with Burn.
+//!
+//! Generate `Vec<f32>` embeddings for text or batches of text. Inference is
+//! blocking; wrap it in `tokio::task::spawn_blocking` when calling from async
+//! contexts.
+//!
+//! # Models
+//!
+//! Select a checkpoint via [`EmbeddingModel`][crate::embedding::EmbeddingModel]
+//! (defaults to `MiniLmL12`):
+//!
+//! - `MiniLmL6` / `MiniLmL12` — `sentence-transformers/all-MiniLM-L6-v2` / `all-MiniLM-L12-v2`
+//! - `BgeSmallEnV15` / `BgeBaseEnV15` / `BgeLargeEnV15` — `BAAI/bge-small-en-v1.5` / `bge-base-en-v1.5` / `bge-large-en-v1.5`
+//! - `AllMpnetBaseV2` — `sentence-transformers/all-mpnet-base-v2`
+//! - `BgeM3` — `BAAI/bge-m3` (dense output only)
 //!
 //! # Example
 //!
@@ -25,27 +39,26 @@
 //! }
 //! ```
 
-mod bert;
-mod mpnet;
-mod xlm_roberta;
+mod models;
 
 use std::path::PathBuf;
 
-use anyhow::{Context, Result, bail};
-use burn::tensor::{Tensor, backend::Backend};
+use anyhow::{Context, Result};
+use burn::tensor::backend::Backend;
 use burn_wgpu::{Wgpu, WgpuDevice};
 
-use crate::embedding::bert::{
+use crate::embedding::models::bert::{
     BertEmbeddingModel, BertEmbeddingVariant, EmbeddingInputKind,
     load_pretrained_bert_embedding,
 };
-use crate::embedding::mpnet::{
+use crate::embedding::models::mpnet::{
     MpnetEmbeddingModel, MpnetEmbeddingVariant, load_pretrained_mpnet_embedding,
 };
-use crate::embedding::xlm_roberta::{
+use crate::embedding::models::xlm_roberta::{
     XlmRobertaEmbeddingModel, XlmRobertaEmbeddingVariant,
     load_pretrained_xlm_roberta_embedding,
 };
+use crate::ml::{resolve_batch_size, tensor2_to_rows_f32};
 
 /// Default Burn backend.
 pub(crate) type DefaultBackend = Wgpu;
@@ -54,7 +67,6 @@ pub(crate) type DefaultBackend = Wgpu;
 const DEFAULT_BATCH_SIZE: usize = 32;
 
 /// Supported embedding model checkpoints.
-#[non_exhaustive]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum EmbeddingModel {
     /// `sentence-transformers/all-MiniLM-L6-v2`.
@@ -77,55 +89,39 @@ pub enum EmbeddingModel {
     BgeM3,
 }
 
-impl From<EmbeddingModel> for BertEmbeddingVariant {
-    fn from(value: EmbeddingModel) -> Self {
-        match value {
-            EmbeddingModel::MiniLmL6 => BertEmbeddingVariant::MiniLmL6,
-            EmbeddingModel::MiniLmL12 => BertEmbeddingVariant::MiniLmL12,
-            EmbeddingModel::BgeSmallEnV15 => {
-                BertEmbeddingVariant::BgeSmallEnV15
-            }
-            EmbeddingModel::BgeBaseEnV15 => BertEmbeddingVariant::BgeBaseEnV15,
-            EmbeddingModel::BgeLargeEnV15 => {
-                BertEmbeddingVariant::BgeLargeEnV15
-            }
-            EmbeddingModel::AllMpnetBaseV2 | EmbeddingModel::BgeM3 => {
-                unreachable!("non-BERT models use their own loaders")
-            }
+impl EmbeddingModel {
+    fn bert_variant(self) -> Option<BertEmbeddingVariant> {
+        match self {
+            Self::MiniLmL6 => Some(BertEmbeddingVariant::MiniLmL6),
+            Self::MiniLmL12 => Some(BertEmbeddingVariant::MiniLmL12),
+            Self::BgeSmallEnV15 => Some(BertEmbeddingVariant::BgeSmallEnV15),
+            Self::BgeBaseEnV15 => Some(BertEmbeddingVariant::BgeBaseEnV15),
+            Self::BgeLargeEnV15 => Some(BertEmbeddingVariant::BgeLargeEnV15),
+            Self::AllMpnetBaseV2 | Self::BgeM3 => None,
         }
     }
-}
 
-impl From<EmbeddingModel> for MpnetEmbeddingVariant {
-    fn from(value: EmbeddingModel) -> Self {
-        match value {
-            EmbeddingModel::AllMpnetBaseV2 => {
-                MpnetEmbeddingVariant::AllMpnetBaseV2
-            }
-            EmbeddingModel::MiniLmL6
-            | EmbeddingModel::MiniLmL12
-            | EmbeddingModel::BgeSmallEnV15
-            | EmbeddingModel::BgeBaseEnV15
-            | EmbeddingModel::BgeLargeEnV15
-            | EmbeddingModel::BgeM3 => {
-                unreachable!("non-MPNet models use their own loaders")
-            }
+    fn mpnet_variant(self) -> Option<MpnetEmbeddingVariant> {
+        match self {
+            Self::AllMpnetBaseV2 => Some(MpnetEmbeddingVariant::AllMpnetBaseV2),
+            Self::MiniLmL6
+            | Self::MiniLmL12
+            | Self::BgeSmallEnV15
+            | Self::BgeBaseEnV15
+            | Self::BgeLargeEnV15
+            | Self::BgeM3 => None,
         }
     }
-}
 
-impl From<EmbeddingModel> for XlmRobertaEmbeddingVariant {
-    fn from(value: EmbeddingModel) -> Self {
-        match value {
-            EmbeddingModel::BgeM3 => XlmRobertaEmbeddingVariant::BgeM3,
-            EmbeddingModel::MiniLmL6
-            | EmbeddingModel::MiniLmL12
-            | EmbeddingModel::BgeSmallEnV15
-            | EmbeddingModel::BgeBaseEnV15
-            | EmbeddingModel::BgeLargeEnV15
-            | EmbeddingModel::AllMpnetBaseV2 => {
-                unreachable!("non-XLM-RoBERTa models use their own loaders")
-            }
+    fn xlm_roberta_variant(self) -> Option<XlmRobertaEmbeddingVariant> {
+        match self {
+            Self::BgeM3 => Some(XlmRobertaEmbeddingVariant::BgeM3),
+            Self::MiniLmL6
+            | Self::MiniLmL12
+            | Self::BgeSmallEnV15
+            | Self::BgeBaseEnV15
+            | Self::BgeLargeEnV15
+            | Self::AllMpnetBaseV2 => None,
         }
     }
 }
@@ -186,7 +182,10 @@ where
             | EmbeddingModel::BgeLargeEnV15 => LoadedEmbeddingModel::Bert(
                 load_pretrained_bert_embedding(
                     device,
-                    options.model.into(),
+                    options
+                        .model
+                        .bert_variant()
+                        .context("expected BERT embedding variant")?,
                     options.cache_dir,
                 )
                 .await?,
@@ -194,7 +193,10 @@ where
             EmbeddingModel::AllMpnetBaseV2 => LoadedEmbeddingModel::Mpnet(
                 load_pretrained_mpnet_embedding(
                     device,
-                    options.model.into(),
+                    options
+                        .model
+                        .mpnet_variant()
+                        .context("expected MPNet embedding variant")?,
                     options.cache_dir,
                 )
                 .await?,
@@ -202,7 +204,10 @@ where
             EmbeddingModel::BgeM3 => LoadedEmbeddingModel::XlmRoberta(
                 load_pretrained_xlm_roberta_embedding(
                     device,
-                    options.model.into(),
+                    options
+                        .model
+                        .xlm_roberta_variant()
+                        .context("expected XLM-RoBERTa embedding variant")?,
                     options.cache_dir,
                 )
                 .await?,
@@ -349,7 +354,8 @@ where
             return Ok(Vec::new());
         }
 
-        let batch_size = batch_size_or_default(inputs.len(), batch_size)?;
+        let batch_size =
+            resolve_batch_size(inputs.len(), batch_size, DEFAULT_BATCH_SIZE)?;
 
         let mut embeddings = Vec::with_capacity(inputs.len());
         for batch in inputs.chunks(batch_size) {
@@ -375,7 +381,10 @@ where
                     &self.device,
                 )?,
             };
-            embeddings.extend(tensor_to_rows(batch_embeddings)?);
+            embeddings.extend(tensor2_to_rows_f32(
+                batch_embeddings,
+                "failed to read embedding output tensor",
+            )?);
         }
 
         Ok(embeddings)
@@ -409,36 +418,6 @@ where
     }
 }
 
-fn batch_size_or_default(
-    document_count: usize,
-    batch_size: Option<usize>,
-) -> Result<usize> {
-    let batch_size =
-        batch_size.unwrap_or(document_count.min(DEFAULT_BATCH_SIZE));
-    if batch_size == 0 {
-        bail!("batch size must be greater than zero");
-    }
-
-    Ok(batch_size)
-}
-
-fn tensor_to_rows<B: Backend>(
-    embeddings: Tensor<B, 2>,
-) -> Result<Vec<Vec<f32>>> {
-    let [row_count, column_count] = embeddings.dims();
-    let data = embeddings.into_data().convert::<f32>();
-    let values = data
-        .as_slice::<f32>()
-        .map_err(|error| anyhow::anyhow!(error.to_string()))
-        .context("failed to read embedding output tensor")?;
-
-    Ok(values
-        .chunks(column_count)
-        .take(row_count)
-        .map(|row| row.to_vec())
-        .collect())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -450,38 +429,6 @@ mod tests {
     static LIVE_MODEL_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     const BGE_QUERY_PROMPT: &str =
         "Represent this sentence for searching relevant passages: ";
-
-    #[test]
-    fn api_model_mapping_converts_all_public_variants() {
-        assert_eq!(
-            BertEmbeddingVariant::from(EmbeddingModel::MiniLmL6),
-            BertEmbeddingVariant::MiniLmL6
-        );
-        assert_eq!(
-            BertEmbeddingVariant::from(EmbeddingModel::MiniLmL12),
-            BertEmbeddingVariant::MiniLmL12
-        );
-        assert_eq!(
-            BertEmbeddingVariant::from(EmbeddingModel::BgeSmallEnV15),
-            BertEmbeddingVariant::BgeSmallEnV15
-        );
-        assert_eq!(
-            BertEmbeddingVariant::from(EmbeddingModel::BgeBaseEnV15),
-            BertEmbeddingVariant::BgeBaseEnV15
-        );
-        assert_eq!(
-            BertEmbeddingVariant::from(EmbeddingModel::BgeLargeEnV15),
-            BertEmbeddingVariant::BgeLargeEnV15
-        );
-        assert_eq!(
-            MpnetEmbeddingVariant::from(EmbeddingModel::AllMpnetBaseV2),
-            MpnetEmbeddingVariant::AllMpnetBaseV2
-        );
-        assert_eq!(
-            XlmRobertaEmbeddingVariant::from(EmbeddingModel::BgeM3),
-            XlmRobertaEmbeddingVariant::BgeM3
-        );
-    }
 
     #[test]
     fn api_model_metadata_returns_bge_repo_ids() {
@@ -744,21 +691,21 @@ mod tests {
 
     #[test]
     fn util_batch_size_default_caps_large_batches() {
-        let batch_size = batch_size_or_default(128, None)
+        let batch_size = resolve_batch_size(128, None, DEFAULT_BATCH_SIZE)
             .expect("default batch size should work");
         assert_eq!(batch_size, DEFAULT_BATCH_SIZE);
     }
 
     #[test]
     fn util_batch_size_default_uses_document_count_when_small() {
-        let batch_size = batch_size_or_default(4, None)
+        let batch_size = resolve_batch_size(4, None, DEFAULT_BATCH_SIZE)
             .expect("default batch size should work");
         assert_eq!(batch_size, 4);
     }
 
     #[test]
     fn util_batch_size_validate_rejects_zero() {
-        let error = batch_size_or_default(1, Some(0))
+        let error = resolve_batch_size(1, Some(0), DEFAULT_BATCH_SIZE)
             .expect_err("zero batch size should fail");
         assert!(
             error
@@ -775,7 +722,11 @@ mod tests {
             &device,
         );
 
-        let rows = tensor_to_rows(embeddings).expect("rows should extract");
+        let rows = tensor2_to_rows_f32(
+            embeddings,
+            "failed to read embedding output tensor",
+        )
+        .expect("rows should extract");
         assert_eq!(rows, vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
     }
 
@@ -972,7 +923,7 @@ mod tests {
             .wait_with_output()
             .context("failed to wait for reference script")?;
         if !output.status.success() {
-            bail!(
+            anyhow::bail!(
                 "reference script failed: {}",
                 String::from_utf8_lossy(&output.stderr)
             );

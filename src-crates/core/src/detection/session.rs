@@ -2,7 +2,7 @@ use std::path::Path;
 
 use burn::tensor::backend::Backend;
 
-use crate::detection::model::MagikaModel;
+use crate::detection::models::magika::MagikaModel;
 use crate::detection::{Detection, FileType, MagikaInferenceError};
 
 /// Default Burn backend used by the detection module.

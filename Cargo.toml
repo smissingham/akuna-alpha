@@ -3,6 +3,7 @@ resolver = "3"
 members = [
   "src-crates/app",
   "src-crates/core",
+  "xtask",
 ]
 
 [workspace.package]
@@ -33,15 +34,12 @@ burn-cpu = { version = "0.21.0-pre.3", default-features = false, features = ["st
 
 # ML infra
 tokenizers = "0.22.2"
-hf-hub = { version = "0.5.0", default-features = false, features = ["tokio", "rustls-tls"] }
+hf-hub = { version = "0.5.0", default-features = false, features = ["tokio", "ureq", "rustls-tls"] }
 onnx-ir = "0.21.0-pre.3"
 protobuf = "3.7.2"
 half = "2.7.1"
 image = { version = "0.25.9", default-features = false, features = ["jpeg", "png", "webp"] }
 safetensors = "0.7.0"
-
-# chunking
-memchunk = "0.4.0"
 
 [workspace.lints.rust]
 missing_docs = "deny"

@@ -15,8 +15,10 @@ Loop until stop gate passes.
 - Fewer files, knobs, names, concepts.
 - Real product shape only.
 - Fake architecture dies.
+- Intentional abstraction lives when it simplifies caller API and hides implementation specifics.
 - Greenfield default: break internal API if simpler.
 - Compat must prove itself: persisted data, shipped CLI/API contract, or external consumer.
+- Future implementation swaps are valid only behind one simple surface with config-selected sensible defaults.
 - “Tests expect it”, “public”, “safer”, “maybe used” is not proof.
 
 ## Hunt
@@ -39,6 +41,8 @@ Loop until stop gate passes.
 - Hardcoded app/env/repo names.
 - Generic names hiding domain.
 - One-impl traits.
+- One-impl traits pretending to be plug-in systems.
+- Do not kill one-impl traits used as intentional implementation-hiding boundaries for simple public APIs.
 - One-setting config.
 - Wrapper types only renaming another type.
 - Re-export chains hiding owner.
@@ -69,6 +73,8 @@ Prefer one high-level behavior test over many micro/probe tests.
 - Split giant files only when ownership clearer.
 - Never split by line count, technical layer, or style taste.
 - Public API thin.
+- Public API may expose domain trait/config while concrete backend stays hidden.
+- Keep backend-specific types private unless caller must control backend-specific behavior.
 - Orchestration separate from model/runtime internals.
 - Structured parts source of truth.
 - Derive text from parts; no parallel text pipeline.
@@ -79,7 +85,7 @@ Prefer one high-level behavior test over many micro/probe tests.
 - No silent fallback unless explicit product option.
 - Inline single-use helpers.
 - Collapse pass-through modules/re-export-only files.
-- Collapse one-impl traits unless real boundary.
+- Collapse one-impl traits unless they are real boundaries hiding implementation details behind simple defaults.
 - Remove fields caller can compute.
 - Rename generic names toward domain.
 

@@ -74,8 +74,8 @@ impl FileType {
     /// Returns the file type information.
     pub fn info(&self) -> &'static TypeInfo {
         match self {
-            FileType::Directory => &crate::detection::content::DIRECTORY,
-            FileType::Symlink => &crate::detection::content::SYMLINK,
+            FileType::Directory => &super::content::DIRECTORY,
+            FileType::Symlink => &super::content::SYMLINK,
             FileType::Inferred(x) => x.content_type().info(),
             FileType::Ruled(x) => x.info(),
         }

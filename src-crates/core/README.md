@@ -1,7 +1,7 @@
 # akuna-core
 
-Knowledge tooling library with feature-gated modules for chunking, detection,
-embedding, extraction, reranking, and graph storage.
+Knowledge tooling library with feature-gated modules for detection, embedding,
+extraction, OCR, reranking, and graph storage.
 
 See the [workspace README](../../README.md) for the feature overview.
 
@@ -9,24 +9,17 @@ See the [workspace README](../../README.md) for the feature overview.
 
 | Module       | Feature      | Purpose                                |
 | ------------ | ------------ | -------------------------------------- |
-| `chunking`   | `chunking`   | Text chunking                          |
 | `detection`  | `detection`  | File-type detection                    |
 | `embedding`  | `embedding`  | Text embeddings                        |
 | `extraction` | `extraction` | File extraction                        |
+| `layout`     | `layout`     | Document layout detection              |
+| `ocr`        | `ocr`        | Image text recognition                 |
 | `reranking`  | `reranking`  | Text reranking                         |
 | `storage`    | `storage`    | Graph storage and retrieval            |
 
 The `full` feature enables every optional module above.
 
 ## Examples
-
-### Chunking
-
-```rust
-use akuna_core::chunking::chunk_text;
-
-let chunks = chunk_text(None, "hello\nworld", Some("txt"));
-```
 
 ### Extraction
 

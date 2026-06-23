@@ -1,35 +1,46 @@
-//! Simple text reranking models built with Burn.
+//! Cross-encoder text reranking built with Burn.
+//!
+//! Scores and ranks documents against a query. Inference is blocking; wrap it
+//! in `tokio::task::spawn_blocking` when calling from async contexts.
+//!
+//! # Models
+//!
+//! Select a checkpoint via [`RerankingModel`][crate::reranking::RerankingModel]
+//! (defaults to `BgeRerankerBase`):
+//!
+//! - `BgeRerankerBase` — `BAAI/bge-reranker-base`
 //!
 //! # Example
 //!
 //! ```rust,no_run
-//! use akuna_core::reranking::TextReranker;
+//! use akuna_core::reranking::{RerankingModel, TextReranker, TextRerankerOptions};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let model = TextReranker::try_new().await?;
+//!     let model = TextReranker::new(TextRerankerOptions {
+//!         model: RerankingModel::BgeRerankerBase,
+//!         ..Default::default()
+//!     })
+//!     .await?;
 //!     // Note: `score` is blocking. In production, wrap heavy inference in
 //!     // `tokio::task::spawn_blocking` to avoid stalling async workers.
-//! let score = model.score("Rust ML", "Burn is a Rust ML framework")?;
+//!     let score = model.score("Rust ML", "Burn is a Rust ML framework")?;
 //!     assert!(score.is_finite());
 //!     Ok(())
 //! }
 //! ```
 
-mod jina_v2;
-mod xlm_roberta;
+mod models;
 
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
-use burn::tensor::{Tensor, backend::Backend};
+use burn::tensor::backend::Backend;
 use burn_wgpu::{Wgpu, WgpuDevice};
 
-use crate::reranking::jina_v2::{
-    JinaV2RerankerModel, JinaV2RerankerVariant,
-    load_pretrained_jina_v2_reranker,
-};
-use crate::reranking::xlm_roberta::{
+use crate::ml::{resolve_batch_size, sigmoid_f32, tensor1_to_vec_f32};
+
+use crate::reranking::models::xlm_roberta::{
     XlmRobertaRerankerModel, XlmRobertaRerankerVariant,
     load_pretrained_xlm_roberta_reranker,
 };
@@ -39,29 +50,28 @@ pub(crate) type DefaultBackend = Wgpu;
 /// Default inference batch size when callers do not override it.
 const DEFAULT_BATCH_SIZE: usize = 32;
 
-/// Identifiers for the supported reranker models.
-#[non_exhaustive]
+/// Supported reranker model checkpoints.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum RerankerModel {
-    /// BAAI/bge-reranker-base cross-encoder.
+pub enum RerankingModel {
+    /// `BAAI/bge-reranker-base`.
     #[default]
     BgeRerankerBase,
-    /// JinaAI jina-reranker-v2-base-multilingual.
-    JinaRerankerV2BaseMultilingual,
 }
 
-#[derive(Debug)]
-enum LoadedRerankerModel<B: Backend> {
-    XlmRoberta(XlmRobertaRerankerModel<B>),
-    JinaV2(JinaV2RerankerModel<B>),
+impl RerankingModel {
+    fn xlm_roberta_variant(self) -> XlmRobertaRerankerVariant {
+        match self {
+            Self::BgeRerankerBase => XlmRobertaRerankerVariant::BgeRerankerBase,
+        }
+    }
 }
 
 /// Construction options for a [`TextReranker`].
 #[non_exhaustive]
 #[derive(Debug, Clone, Default)]
 pub struct TextRerankerOptions {
-    /// Which reranker model to load.
-    pub model: RerankerModel,
+    /// Which reranker checkpoint to load.
+    pub model: RerankingModel,
     /// Optional Hugging Face cache directory override.
     pub cache_dir: Option<PathBuf>,
 }
@@ -93,7 +103,7 @@ pub struct RerankOptions {
 /// Cross-encoder text reranker backed by Burn.
 #[derive(Debug)]
 pub struct TextReranker<B: Backend = DefaultBackend> {
-    model: LoadedRerankerModel<B>,
+    model: XlmRobertaRerankerModel<B>,
     device: B::Device,
 }
 
@@ -131,26 +141,12 @@ where
         device: &B::Device,
         options: TextRerankerOptions,
     ) -> Result<Self> {
-        let model = match options.model {
-            RerankerModel::BgeRerankerBase => LoadedRerankerModel::XlmRoberta(
-                load_pretrained_xlm_roberta_reranker(
-                    device,
-                    XlmRobertaRerankerVariant::BgeRerankerBase,
-                    options.cache_dir,
-                )
-                .await?,
-            ),
-            RerankerModel::JinaRerankerV2BaseMultilingual => {
-                LoadedRerankerModel::JinaV2(
-                    load_pretrained_jina_v2_reranker(
-                        device,
-                        JinaV2RerankerVariant::BaseMultilingual,
-                        options.cache_dir,
-                    )
-                    .await?,
-                )
-            }
-        };
+        let model = load_pretrained_xlm_roberta_reranker(
+            device,
+            options.model.xlm_roberta_variant(),
+            options.cache_dir,
+        )
+        .await?;
 
         Ok(Self {
             model,
@@ -194,7 +190,8 @@ where
             return Ok(Vec::new());
         }
 
-        let batch_size = batch_size_or_default(pairs.len(), batch_size)?;
+        let batch_size =
+            resolve_batch_size(pairs.len(), batch_size, DEFAULT_BATCH_SIZE)?;
         let mut scores = Vec::with_capacity(pairs.len());
 
         for batch in pairs.chunks(batch_size) {
@@ -202,15 +199,11 @@ where
                 .iter()
                 .map(|(query, document)| (query.as_ref(), document.as_ref()))
                 .collect::<Vec<_>>();
-            let batch_scores = match &self.model {
-                LoadedRerankerModel::XlmRoberta(model) => {
-                    model.score(&batch_pairs, &self.device)?
-                }
-                LoadedRerankerModel::JinaV2(model) => {
-                    model.score(&batch_pairs, &self.device)?
-                }
-            };
-            scores.extend(tensor_to_vec(batch_scores)?);
+            let batch_scores = self.model.score(&batch_pairs, &self.device)?;
+            scores.extend(tensor1_to_vec_f32(
+                batch_scores,
+                "failed to read reranker output tensor",
+            )?);
         }
 
         Ok(scores)
@@ -254,7 +247,7 @@ where
             .enumerate()
             .map(|(index, score)| {
                 let score = if options.normalize {
-                    sigmoid(score)
+                    sigmoid_f32(score)
                 } else {
                     score
                 };
@@ -276,34 +269,6 @@ where
             })
             .collect())
     }
-
-    /// Returns the model variant backing this reranker.
-    pub fn model(&self) -> RerankerModel {
-        match &self.model {
-            LoadedRerankerModel::XlmRoberta(model) => match model.variant {
-                XlmRobertaRerankerVariant::BgeRerankerBase => {
-                    RerankerModel::BgeRerankerBase
-                }
-            },
-            LoadedRerankerModel::JinaV2(model) => match model.variant {
-                JinaV2RerankerVariant::BaseMultilingual => {
-                    RerankerModel::JinaRerankerV2BaseMultilingual
-                }
-            },
-        }
-    }
-}
-
-fn batch_size_or_default(
-    item_count: usize,
-    batch_size: Option<usize>,
-) -> Result<usize> {
-    let batch_size = batch_size.unwrap_or(item_count.min(DEFAULT_BATCH_SIZE));
-    if batch_size == 0 {
-        bail!("batch size must be greater than zero");
-    }
-
-    Ok(batch_size)
 }
 
 fn validate_top_k(top_k: Option<usize>) -> Result<()> {
@@ -313,34 +278,14 @@ fn validate_top_k(top_k: Option<usize>) -> Result<()> {
     Ok(())
 }
 
-fn tensor_to_vec<B: Backend>(scores: Tensor<B, 1>) -> Result<Vec<f32>> {
-    let data = scores.into_data().convert::<f32>();
-    data.as_slice::<f32>()
-        .map(|values| values.to_vec())
-        .map_err(|error| anyhow::anyhow!(error.to_string()))
-        .context("failed to read reranker output tensor")
-}
-
-fn sigmoid(score: f32) -> f32 {
-    1.0 / (1.0 + (-score).exp())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use anyhow::Result;
 
     #[test]
-    fn api_options_default_uses_bge_reranker_base() {
-        assert_eq!(
-            TextRerankerOptions::default().model,
-            RerankerModel::BgeRerankerBase
-        );
-    }
-
-    #[test]
     fn util_batch_size_validate_rejects_zero() {
-        let error = batch_size_or_default(1, Some(0))
+        let error = resolve_batch_size(1, Some(0), DEFAULT_BATCH_SIZE)
             .expect_err("zero batch size should fail");
         assert!(
             error
@@ -368,17 +313,17 @@ mod tests {
 
     #[test]
     fn util_sigmoid_maps_scores_to_zero_one() {
-        assert_eq!(sigmoid(0.0), 0.5);
-        assert!(sigmoid(10.0) > 0.99);
-        assert!(sigmoid(-10.0) < 0.01);
+        assert_eq!(sigmoid_f32(0.0), 0.5);
+        assert!(sigmoid_f32(10.0) > 0.99);
+        assert!(sigmoid_f32(-10.0) < 0.01);
     }
 
     #[test]
     fn util_sigmoid_bounded_for_extreme_scores() {
-        assert!(sigmoid(1000.0).is_finite());
-        assert!(sigmoid(-1000.0).is_finite());
-        assert!(sigmoid(1000.0) <= 1.0);
-        assert!(sigmoid(-1000.0) >= 0.0);
+        assert!(sigmoid_f32(1000.0).is_finite());
+        assert!(sigmoid_f32(-1000.0).is_finite());
+        assert!(sigmoid_f32(1000.0) <= 1.0);
+        assert!(sigmoid_f32(-1000.0) >= 0.0);
     }
 
     #[tokio::test]
@@ -394,52 +339,14 @@ mod tests {
                 "Bananas are yellow".to_string(),
             ),
         ];
-        let model = TextReranker::new(TextRerankerOptions {
-            model: RerankerModel::BgeRerankerBase,
-            ..Default::default()
-        })
-        .await
-        .expect("model should load");
+        let model = TextReranker::new(TextRerankerOptions::default())
+            .await
+            .expect("model should load");
         let actual = model
             .score_batch(&pairs, Some(2))
             .expect("Burn reranker should score pairs");
         let expected = reference_scores("BAAI/bge-reranker-base", &pairs)
             .expect("reference scores should compute");
-
-        assert_scores_close(&actual, &expected, 1e-3);
-    }
-
-    #[tokio::test]
-    #[ignore = "downloads model and runs Python transformers reference"]
-    async fn parity_jina_v2_scores_match_transformers() {
-        let pairs = vec![
-            (
-                "Rust machine learning".to_string(),
-                "Burn is a deep learning framework for Rust".to_string(),
-            ),
-            (
-                "Organic produce".to_string(),
-                "Bananas are yellow".to_string(),
-            ),
-            (
-                "Machine learning".to_string(),
-                "Apprendimento automatico in Rust".to_string(),
-            ),
-        ];
-        let model = TextReranker::new(TextRerankerOptions {
-            model: RerankerModel::JinaRerankerV2BaseMultilingual,
-            ..Default::default()
-        })
-        .await
-        .expect("model should load");
-        let actual = model
-            .score_batch(&pairs, Some(2))
-            .expect("Burn reranker should score pairs");
-        let expected = reference_scores(
-            "jinaai/jina-reranker-v2-base-multilingual",
-            &pairs,
-        )
-        .expect("reference scores should compute");
 
         assert_scores_close(&actual, &expected, 1e-3);
     }

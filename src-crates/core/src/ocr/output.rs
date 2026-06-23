@@ -86,8 +86,6 @@ impl OcrRect {
     }
 }
 
-pub(crate) type Rect = OcrRect;
-
 /// OCR-local block classification.
 #[non_exhaustive]
 #[derive(
