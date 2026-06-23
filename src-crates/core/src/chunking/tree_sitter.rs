@@ -31,14 +31,15 @@ fn collect_code_part_ranges(
     node: tree_sitter::Node<'_>,
     ranges: &mut Vec<CodePartRange>,
 ) -> bool {
-    if node.parent().is_some() && is_code_part_node(node) {
-        if is_function_depth_node(node) || !has_child_code_parts(node) {
-            ranges.push(CodePartRange {
-                kind: node.kind().to_owned(),
-                range: node.byte_range(),
-            });
-            return true;
-        }
+    if node.parent().is_some()
+        && is_code_part_node(node)
+        && (is_function_depth_node(node) || !has_child_code_parts(node))
+    {
+        ranges.push(CodePartRange {
+            kind: node.kind().to_owned(),
+            range: node.byte_range(),
+        });
+        return true;
     }
 
     let start_len = ranges.len();

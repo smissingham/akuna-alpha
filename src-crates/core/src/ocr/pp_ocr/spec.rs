@@ -5,16 +5,8 @@ pub(crate) enum PpOcrV6Tier {
     Medium,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PpOcrModelKind {
-    Detector,
-    Recognizer,
-}
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PpOcrModelSpec {
-    pub(crate) tier: PpOcrV6Tier,
-    pub(crate) kind: PpOcrModelKind,
     pub(crate) repo_id: &'static str,
     pub(crate) revision: &'static str,
     pub(crate) static_shape: [usize; 4],
@@ -64,8 +56,6 @@ pub(crate) fn detector_config(tier: PpOcrV6Tier) -> PpOcrDetectorConfig {
 
     PpOcrDetectorConfig {
         spec: PpOcrModelSpec {
-            tier,
-            kind: PpOcrModelKind::Detector,
             repo_id,
             revision,
             static_shape: [1, 3, 960, 960],
@@ -101,8 +91,6 @@ pub(crate) fn recognizer_config(tier: PpOcrV6Tier) -> PpOcrRecognizerConfig {
 
     PpOcrRecognizerConfig {
         spec: PpOcrModelSpec {
-            tier,
-            kind: PpOcrModelKind::Recognizer,
             repo_id,
             revision,
             static_shape: [1, 3, 48, 320],

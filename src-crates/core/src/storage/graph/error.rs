@@ -89,6 +89,13 @@ pub enum GraphError {
     #[error("Node properties must serialize to an object")]
     InvalidNodeItem,
 
+    /// Edge predicate cannot be used as a relationship type.
+    #[error("Edge predicate '{predicate}' is not a valid relationship type")]
+    InvalidEdgePredicate {
+        /// Invalid edge predicate.
+        predicate: String,
+    },
+
     /// Graph target already exists.
     #[error("Graph {target} already exists")]
     AlreadyExists {

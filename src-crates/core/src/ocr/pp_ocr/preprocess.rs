@@ -11,8 +11,6 @@ pub(crate) struct PpOcrInput {
     pub(crate) width: usize,
     pub(crate) original_width: u32,
     pub(crate) original_height: u32,
-    pub(crate) resized_width: u32,
-    pub(crate) resized_height: u32,
 }
 
 pub(crate) fn preprocess_detector(
@@ -46,8 +44,6 @@ pub(crate) fn preprocess_detector(
         width: target_width,
         original_width,
         original_height,
-        resized_width,
-        resized_height,
     })
 }
 
@@ -82,8 +78,6 @@ pub(crate) fn preprocess_recognizer(
         width: target_width,
         original_width,
         original_height,
-        resized_width,
-        resized_height: target_height as u32,
     })
 }
 

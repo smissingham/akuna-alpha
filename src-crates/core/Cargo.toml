@@ -30,10 +30,10 @@ full = [
 # Module features
 detection = ["dep:burn", "dep:burn-store", "dep:burn-wgpu", "dep:hf-hub", "dep:image", "dep:onnx-ir", "dep:protobuf", "dep:safetensors"]
 embedding = ["dep:burn", "dep:burn-wgpu", "dep:burn-store", "dep:hf-hub", "dep:tokenizers"]
-extraction = ["detection", "dep:memchunk", "dep:thiserror", "dep:tokio", "dep:omniparse", "dep:pdf_oxide", "dep:office_oxide", "dep:rbook", "dep:tree-sitter", "dep:tree-sitter-bash", "dep:tree-sitter-c", "dep:tree-sitter-c-sharp", "dep:tree-sitter-containerfile", "dep:tree-sitter-cpp", "dep:tree-sitter-css", "dep:tree-sitter-dart", "dep:tree-sitter-go", "dep:tree-sitter-graphql", "dep:tree-sitter-groovy", "dep:tree-sitter-hcl", "dep:tree-sitter-html", "dep:tree-sitter-java", "dep:tree-sitter-javascript", "dep:tree-sitter-json", "dep:tree-sitter-lua", "dep:tree-sitter-md", "dep:tree-sitter-php", "dep:tree-sitter-python", "dep:tree-sitter-ruby", "dep:tree-sitter-rust", "dep:tree-sitter-scala", "dep:tree-sitter-scss", "dep:tree-sitter-sequel", "dep:tree-sitter-svelte-next", "dep:tree-sitter-swift", "dep:tree-sitter-typescript", "dep:tree-sitter-vue-updated", "dep:tree-sitter-yaml"]
-ocr = ["detection", "dep:burn", "dep:burn-store", "dep:burn-wgpu", "dep:hf-hub", "dep:image", "dep:safetensors", "dep:half", "dep:ocrs", "dep:rten", "dep:tokenizers"]
+extraction = ["detection", "dep:memchunk", "dep:tokio", "dep:omniparse", "dep:pdf_oxide", "dep:office_oxide", "dep:rbook", "dep:tree-sitter", "dep:tree-sitter-bash", "dep:tree-sitter-c", "dep:tree-sitter-c-sharp", "dep:tree-sitter-containerfile", "dep:tree-sitter-cpp", "dep:tree-sitter-css", "dep:tree-sitter-dart", "dep:tree-sitter-go", "dep:tree-sitter-graphql", "dep:tree-sitter-groovy", "dep:tree-sitter-hcl", "dep:tree-sitter-html", "dep:tree-sitter-java", "dep:tree-sitter-javascript", "dep:tree-sitter-json", "dep:tree-sitter-lua", "dep:tree-sitter-md", "dep:tree-sitter-php", "dep:tree-sitter-python", "dep:tree-sitter-ruby", "dep:tree-sitter-rust", "dep:tree-sitter-scala", "dep:tree-sitter-scss", "dep:tree-sitter-sequel", "dep:tree-sitter-svelte-next", "dep:tree-sitter-swift", "dep:tree-sitter-typescript", "dep:tree-sitter-vue-updated", "dep:tree-sitter-yaml"]
+ocr = ["detection", "dep:burn", "dep:burn-store", "dep:burn-wgpu", "dep:hf-hub", "dep:image", "dep:safetensors", "dep:half", "dep:tokenizers"]
 reranking = ["dep:burn", "dep:burn-wgpu", "dep:burn-store", "dep:hf-hub", "dep:tokenizers"]
-storage = ["dep:thiserror", "dep:grafeo"]
+storage = ["dep:grafeo"]
 
 [dependencies]
 # chunking
@@ -56,12 +56,10 @@ tokenizers = { workspace = true, optional = true }
 # ocr
 half = { workspace = true, optional = true }
 image = { workspace = true, optional = true }
-ocrs = { workspace = true, optional = true }
-rten = { workspace = true, optional = true }
 safetensors = { workspace = true, optional = true }
 
-# extraction + storage
-thiserror = { workspace = true, optional = true }
+# shared errors
+thiserror = { workspace = true }
 
 # extraction
 pdf_oxide = { version = "0.3.30", default-features = false, optional = true }
@@ -76,7 +74,7 @@ grafeo = { version = "0.5.42", default-features = false, features = ["embedded",
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# tree-sitter grammars (optional, opt-in via tree-sitter feature)
+# tree-sitter grammars (internal extraction implementation)
 tree-sitter = { version = "0.26.9", optional = true }
 tree-sitter-bash = { version = "0.25.1", optional = true }
 tree-sitter-c = { version = "0.24.2", optional = true }
@@ -111,6 +109,7 @@ tree-sitter-yaml = { version = "0.7.2", optional = true }
 utoipa = { workspace = true }
 
 [dev-dependencies]
+ahash = "0.8.12"
 burn-cpu = { workspace = true }
 magika = "1.1.0"
 # ort is a transitive dep of magika; declared here to enable the

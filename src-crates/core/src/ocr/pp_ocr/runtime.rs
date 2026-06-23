@@ -5,11 +5,11 @@ use burn::tensor::backend::Backend;
 use burn::tensor::{Bytes, Tensor, TensorData};
 use image::{DynamicImage, GenericImageView};
 
-use crate::ocr::models::generated::{
+use crate::ocr::pp_ocr::dictionary::load_dictionary;
+use crate::ocr::pp_ocr::generated::{
     pp_ocrv6_medium_det, pp_ocrv6_medium_rec, pp_ocrv6_small_det,
     pp_ocrv6_small_rec, pp_ocrv6_tiny_det, pp_ocrv6_tiny_rec,
 };
-use crate::ocr::pp_ocr::dictionary::load_dictionary;
 use crate::ocr::pp_ocr::postprocess::{
     postprocess_detector, postprocess_recognizer,
 };
@@ -71,14 +71,6 @@ where
             recognizer,
             dictionary,
         })
-    }
-
-    pub(crate) fn extract_image(
-        &self,
-        image: &DynamicImage,
-        device: &B::Device,
-    ) -> Result<String> {
-        Ok(self.extract_page(image, device)?.plain_text())
     }
 
     pub(crate) fn extract_page(
@@ -190,7 +182,7 @@ impl<B: Backend> DetectorModel<B> {
             PpOcrV6Tier::Tiny => {
                 Self::Tiny(Box::new(pp_ocrv6_tiny_det::Model::from_bytes(
                     bpk(include_bytes!(
-                        "../models/generated/pp_ocrv6_tiny_det/tiny_det.bpk"
+                        "generated/pp_ocrv6_tiny_det/tiny_det.bpk"
                     )),
                     device,
                 )))
@@ -198,7 +190,7 @@ impl<B: Backend> DetectorModel<B> {
             PpOcrV6Tier::Small => {
                 Self::Small(Box::new(pp_ocrv6_small_det::Model::from_bytes(
                     bpk(include_bytes!(
-                        "../models/generated/pp_ocrv6_small_det/small_det.bpk"
+                        "generated/pp_ocrv6_small_det/small_det.bpk"
                     )),
                     device,
                 )))
@@ -206,7 +198,7 @@ impl<B: Backend> DetectorModel<B> {
             PpOcrV6Tier::Medium => {
                 Self::Medium(Box::new(pp_ocrv6_medium_det::Model::from_bytes(
                     bpk(include_bytes!(
-                        "../models/generated/pp_ocrv6_medium_det/medium_det.bpk"
+                        "generated/pp_ocrv6_medium_det/medium_det.bpk"
                     )),
                     device,
                 )))
@@ -229,7 +221,7 @@ impl<B: Backend> RecognizerModel<B> {
             PpOcrV6Tier::Tiny => {
                 Self::Tiny(Box::new(pp_ocrv6_tiny_rec::Model::from_bytes(
                     bpk(include_bytes!(
-                        "../models/generated/pp_ocrv6_tiny_rec/tiny_rec.bpk"
+                        "generated/pp_ocrv6_tiny_rec/tiny_rec.bpk"
                     )),
                     device,
                 )))
@@ -237,7 +229,7 @@ impl<B: Backend> RecognizerModel<B> {
             PpOcrV6Tier::Small => {
                 Self::Small(Box::new(pp_ocrv6_small_rec::Model::from_bytes(
                     bpk(include_bytes!(
-                        "../models/generated/pp_ocrv6_small_rec/small_rec.bpk"
+                        "generated/pp_ocrv6_small_rec/small_rec.bpk"
                     )),
                     device,
                 )))
@@ -245,7 +237,7 @@ impl<B: Backend> RecognizerModel<B> {
             PpOcrV6Tier::Medium => {
                 Self::Medium(Box::new(pp_ocrv6_medium_rec::Model::from_bytes(
                     bpk(include_bytes!(
-                        "../models/generated/pp_ocrv6_medium_rec/medium_rec.bpk"
+                        "generated/pp_ocrv6_medium_rec/medium_rec.bpk"
                     )),
                     device,
                 )))

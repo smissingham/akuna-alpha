@@ -5,7 +5,6 @@
 
 use std::path::PathBuf;
 
-use anyhow::Result;
 use burn::tensor::backend::Backend;
 use burn_wgpu::{Wgpu, WgpuDevice};
 use image::DynamicImage;
@@ -34,6 +33,24 @@ pub struct LayoutOptions {
 pub struct LayoutDetector<B: Backend = DefaultLayoutBackend> {
     runtime: PpDocLayoutRuntime<B>,
     device: B::Device,
+}
+
+/// Layout detection failure.
+#[derive(Debug, thiserror::Error)]
+pub enum LayoutError {
+    /// Layout model files or weights failed to load.
+    #[error("Layout model load failed")]
+    Load {
+        /// Underlying loader error.
+        source: anyhow::Error,
+    },
+
+    /// Layout preprocessing or inference failed.
+    #[error("Layout detection failed")]
+    Detect {
+        /// Underlying detection error.
+        source: anyhow::Error,
+    },
 }
 
 /// Layout output for one page/image.
@@ -101,7 +118,7 @@ impl LayoutDetector<DefaultLayoutBackend> {
     /// # Errors
     ///
     /// Returns an error when model files cannot be loaded.
-    pub async fn new(options: LayoutOptions) -> Result<Self> {
+    pub async fn new(options: LayoutOptions) -> Result<Self, LayoutError> {
         let device = WgpuDevice::default();
         Self::new_with_device(&device, options).await
     }
@@ -119,9 +136,10 @@ where
     pub async fn new_with_device(
         device: &B::Device,
         options: LayoutOptions,
-    ) -> Result<Self> {
-        let runtime =
-            load_pp_doclayout_runtime(device, options.cache_dir).await?;
+    ) -> Result<Self, LayoutError> {
+        let runtime = load_pp_doclayout_runtime(device, options.cache_dir)
+            .await
+            .map_err(|source| LayoutError::Load { source })?;
 
         Ok(Self {
             runtime,
@@ -134,10 +152,14 @@ where
     /// # Errors
     ///
     /// Returns an error when preprocessing or inference fails.
-    pub fn detect_image(&self, image: &DynamicImage) -> Result<LayoutPage> {
+    pub fn detect_image(
+        &self,
+        image: &DynamicImage,
+    ) -> Result<LayoutPage, LayoutError> {
         let blocks = self
             .runtime
-            .detect_image(image, &self.device)?
+            .detect_image(image, &self.device)
+            .map_err(|source| LayoutError::Detect { source })?
             .into_iter()
             .map(|detection| LayoutBlock {
                 label: detection.label,

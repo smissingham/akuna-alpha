@@ -7,7 +7,7 @@
 //! Simple helpers cover common use cases: [`extract_file_bytes`],
 //! [`extract_file_text`], and [`extract_file_content`]. Use [`extract_file`] for
 //! configurable metadata, content, and canonical structured parts. Top-level
-//! chunks are derived from structured parts when requested.
+//! text segments are derived from structured parts when requested.
 //!
 //! # Example
 //!
@@ -58,10 +58,10 @@ pub struct ExtractionConfig {
     ///
     /// When `false`, content may still be built internally for parts output.
     pub return_content: bool,
-    /// Include derived chunks and segments inside each returned part.
+    /// Include derived text segments inside each returned part.
     ///
-    /// When `false`, part chunking has no effect.
-    pub return_part_chunks: bool,
+    /// When `false`, part segmenting has no effect.
+    pub return_part_segments: bool,
     /// Include structured content parts in the result.
     ///
     /// When `false`, extraction may still build parts internally for other outputs.
@@ -70,9 +70,9 @@ pub struct ExtractionConfig {
     ///
     /// Only applied when `return_content` or `return_parts` is enabled.
     pub text: Option<TextExtractionConfig>,
-    /// Optional chunking preferences for derived part segments and chunks.
+    /// Optional chunking preferences for derived part segments.
     ///
-    /// Only applied when `return_part_chunks` is enabled.
+    /// Only applied when `return_part_segments` is enabled.
     pub chunking: Option<ChunkingConfig>,
 }
 
@@ -81,7 +81,7 @@ impl Default for ExtractionConfig {
         Self {
             return_metadata: true,
             return_content: false,
-            return_part_chunks: false,
+            return_part_segments: false,
             return_parts: false,
             text: Some(TextExtractionConfig::default()),
             chunking: Some(ChunkingConfig::default()),
@@ -118,16 +118,6 @@ pub struct ExtractionContent {
     pub text: Option<String>,
 }
 
-/// Legacy extracted text chunk derived from canonical parts.
-#[derive(Clone, Debug, Serialize)]
-pub struct ExtractionChunk {
-    /// Zero-based chunk index.
-    pub index: usize,
-    /// Chunk text.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
-}
-
 /// Text segment derived from an extraction part.
 #[derive(Clone, Debug, Serialize)]
 pub struct ExtractionSegment {
@@ -160,9 +150,6 @@ pub struct ExtractionPart {
     /// Derived text segments for this part, when chunking is requested.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub segments: Option<Vec<ExtractionSegment>>,
-    /// Derived text chunks for this part, when chunking is requested.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub chunks: Option<Vec<ExtractionChunk>>,
 }
 
 /// Character range within canonical extracted text.
@@ -240,7 +227,6 @@ impl ExtractedDocument {
                     confidence: None,
                 }),
                 segments: None,
-                chunks: None,
             }],
         }
     }
@@ -307,7 +293,6 @@ impl ExtractedDocument {
                     confidence: block.confidence,
                 }),
                 segments: None,
-                chunks: None,
             })
             .collect::<Vec<_>>();
 
@@ -325,30 +310,12 @@ pub fn content_from_ocr_page(page: &crate::ocr::OcrPage) -> ExtractionContent {
     ExtractedDocument::from_ocr_page(page).into_content()
 }
 
-/// Convert a layout page into extraction content with geometry-only parts.
-#[cfg(feature = "detection")]
-#[must_use]
-pub fn content_from_layout_page(
-    page: &crate::layout::LayoutPage,
-) -> ExtractionContent {
-    let text = page
-        .blocks
-        .iter()
-        .map(|block| block.label.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    ExtractionContent {
-        text: (!text.is_empty()).then_some(text),
-    }
-}
-
 /// Convenience configuration for metadata-only extraction.
 pub fn metadata_only_config() -> ExtractionConfig {
     ExtractionConfig {
         return_metadata: true,
         return_content: false,
-        return_part_chunks: false,
+        return_part_segments: false,
         return_parts: false,
         ..Default::default()
     }
@@ -489,7 +456,7 @@ async fn extract_ocr_document_from_file(
         .map_err(ocr_extraction_error)?;
     let page = ocr
         .extract_page_file(file_path)
-        .map_err(|source| ocr_extraction_error(source))?;
+        .map_err(ocr_extraction_error)?;
 
     Ok(ExtractedDocument::from_ocr_page(&page))
 }
@@ -503,21 +470,24 @@ async fn extract_ocr_document_from_bytes(
         .map_err(ocr_extraction_error)?;
     let page = ocr
         .extract_page_bytes(bytes)
-        .map_err(|source| ocr_extraction_error(source))?;
+        .map_err(ocr_extraction_error)?;
 
     Ok(ExtractedDocument::from_ocr_page(&page))
 }
 
 #[cfg(feature = "ocr")]
 fn is_image_mime(mime_type: &str) -> bool {
-    mime_type.starts_with("image/")
+    matches!(
+        mime_type,
+        "image/bmp" | "image/jpeg" | "image/png" | "image/tiff"
+    )
 }
 
 #[cfg(feature = "ocr")]
-fn ocr_extraction_error(source: anyhow::Error) -> FileExtractionError {
+fn ocr_extraction_error(source: crate::ocr::OcrError) -> FileExtractionError {
     FileExtractionError::ExtractionEngine {
         engine: "ocr",
-        source: Box::new(std::io::Error::other(source.to_string())),
+        source: Box::new(source),
     }
 }
 
@@ -572,12 +542,10 @@ async fn extract_document(
     file_path: &Path,
     metadata: &ExtractionMetadata,
 ) -> Result<ExtractedDocument, FileExtractionError> {
-    #[cfg(feature = "extraction")]
     if metadata.mime_type == "application/pdf" {
         return extract_pdf_document(config, file_path);
     }
 
-    #[cfg(feature = "extraction")]
     if is_office_document_mime(&metadata.mime_type) {
         return extract_office_document(config, file_path);
     }
@@ -598,7 +566,6 @@ fn extract_text_document(
     text: String,
     metadata: &ExtractionMetadata,
 ) -> ExtractedDocument {
-    #[cfg(feature = "extraction")]
     if let Some(document) = extract_code_document(&text, metadata) {
         return document;
     }
@@ -606,7 +573,6 @@ fn extract_text_document(
     ExtractedDocument::from_text(text)
 }
 
-#[cfg(feature = "extraction")]
 fn extract_code_document(
     text: &str,
     metadata: &ExtractionMetadata,
@@ -614,7 +580,7 @@ fn extract_code_document(
     let extension = metadata.extension.as_deref();
     let ranges =
         crate::chunking::tree_sitter::code_part_ranges(text, extension)?;
-    let base_parts = ranges
+    let parts = ranges
         .into_iter()
         .enumerate()
         .filter_map(|range| {
@@ -638,18 +604,16 @@ fn extract_code_document(
                         "tree-sitter-{}",
                         extension.unwrap_or("unknown")
                     )],
-                    source_id: Some(range.kind),
+                    source_id: None,
                     page: None,
                     line: None,
                     geometry: None,
                     confidence: None,
                 }),
                 segments: None,
-                chunks: None,
             })
         })
         .collect::<Vec<_>>();
-    let parts = append_large_code_continuations(base_parts);
 
     (parts.len() > 1).then_some(ExtractedDocument {
         canonical_text: Some(text.to_owned()),
@@ -657,67 +621,6 @@ fn extract_code_document(
     })
 }
 
-#[cfg(feature = "extraction")]
-fn append_large_code_continuations(
-    parts: Vec<ExtractionPart>,
-) -> Vec<ExtractionPart> {
-    parts
-        .into_iter()
-        .flat_map(split_large_code_part)
-        .enumerate()
-        .map(|(index, mut part)| {
-            part.index = index;
-            part
-        })
-        .collect()
-}
-
-#[cfg(feature = "extraction")]
-fn split_large_code_part(part: ExtractionPart) -> Vec<ExtractionPart> {
-    let Some(text) = part.text.as_deref() else {
-        return vec![part];
-    };
-    if text.len() <= memchunk::DEFAULT_TARGET_SIZE {
-        return vec![part];
-    }
-
-    let Some(range) = part.range else {
-        return vec![part];
-    };
-    let chunks = crate::chunking::chunk_with_delimiters(
-        text,
-        Some(b"\n\n"),
-        memchunk::DEFAULT_TARGET_SIZE,
-    );
-    if chunks.len() <= 1 {
-        return vec![part];
-    }
-
-    let mut cursor = 0;
-    let mut parts = Vec::new();
-    for chunk in chunks {
-        let start = text[cursor..]
-            .find(chunk)
-            .map_or(cursor, |offset| cursor + offset);
-        let end = start + chunk.len();
-        cursor = end;
-
-        let mut continuation = part.clone();
-        continuation.text = Some(chunk.to_owned());
-        continuation.range = Some(ExtractionTextRange {
-            start: range.start + start,
-            end: range.start + end,
-        });
-        if let Some(provenance) = continuation.provenance.as_mut() {
-            provenance.source_id = Some(format!("{}:continuation", part.kind));
-        }
-        parts.push(continuation);
-    }
-
-    parts
-}
-
-#[cfg(feature = "extraction")]
 fn is_office_document_mime(mime_type: &str) -> bool {
     matches!(
         mime_type,
@@ -727,7 +630,6 @@ fn is_office_document_mime(mime_type: &str) -> bool {
     )
 }
 
-#[cfg(feature = "extraction")]
 fn extract_office_document(
     config: Option<&TextExtractionConfig>,
     file_path: &Path,
@@ -750,7 +652,6 @@ fn extract_office_document(
     Ok(ExtractedDocument::from_text(text))
 }
 
-#[cfg(feature = "extraction")]
 fn structured_office_parts(text: &str) -> Vec<ExtractionPart> {
     let mut blocks = Vec::new();
     let mut paragraph = Vec::new();
@@ -795,12 +696,10 @@ fn structured_office_parts(text: &str) -> Vec<ExtractionPart> {
                 confidence: None,
             }),
             segments: None,
-            chunks: None,
         })
         .collect()
 }
 
-#[cfg(feature = "extraction")]
 fn push_office_paragraph(
     blocks: &mut Vec<(String, String)>,
     paragraph: &mut Vec<String>,
@@ -813,7 +712,6 @@ fn push_office_paragraph(
     paragraph.clear();
 }
 
-#[cfg(feature = "extraction")]
 fn structured_office_line_kind(line: &str) -> Option<String> {
     if line.starts_with('#') {
         return Some("heading".to_owned());
@@ -830,7 +728,6 @@ fn structured_office_line_kind(line: &str) -> Option<String> {
     None
 }
 
-#[cfg(feature = "extraction")]
 fn extract_pdf_document(
     config: Option<&TextExtractionConfig>,
     file_path: &Path,
@@ -840,7 +737,6 @@ fn extract_pdf_document(
     let mut document = pdf_oxide::PdfDocument::open(file_path)?;
     let page_count = document.page_count()?;
     let mut extractor = StructuredExtractor::new();
-    let mut cursor = 0;
     let mut parts = Vec::new();
 
     for page_index in 0..page_count {
@@ -877,7 +773,6 @@ fn extract_pdf_document(
                 continue;
             }
 
-            let end = cursor + text.len();
             parts.push(ExtractionPart {
                 index: parts.len(),
                 kind,
@@ -898,9 +793,7 @@ fn extract_pdf_document(
                     confidence: None,
                 }),
                 segments: None,
-                chunks: None,
             });
-            cursor = end + 2;
         }
     }
 
@@ -914,6 +807,11 @@ fn extract_pdf_document(
 
     let parts = roll_up_pdf_parts(parts);
     if parts.len() > 1 {
+        let text = parts
+            .iter()
+            .filter_map(|part| part.text.as_deref())
+            .collect::<Vec<_>>()
+            .join("\n\n");
         return Ok(ExtractedDocument {
             canonical_text: Some(text),
             parts,
@@ -923,7 +821,6 @@ fn extract_pdf_document(
     Ok(ExtractedDocument::from_text(text))
 }
 
-#[cfg(feature = "extraction")]
 fn roll_up_pdf_parts(parts: Vec<ExtractionPart>) -> Vec<ExtractionPart> {
     let lines = parts.into_iter().fold(Vec::new(), roll_up_pdf_line);
     let parts = lines
@@ -940,7 +837,6 @@ fn roll_up_pdf_parts(parts: Vec<ExtractionPart>) -> Vec<ExtractionPart> {
     classify_pdf_flat_parts(split_pdf_heading_parts(parts))
 }
 
-#[cfg(feature = "extraction")]
 fn classify_pdf_flat_parts(
     mut parts: Vec<ExtractionPart>,
 ) -> Vec<ExtractionPart> {
@@ -953,7 +849,6 @@ fn classify_pdf_flat_parts(
     parts
 }
 
-#[cfg(feature = "extraction")]
 fn split_pdf_heading_parts(parts: Vec<ExtractionPart>) -> Vec<ExtractionPart> {
     parts
         .into_iter()
@@ -966,7 +861,6 @@ fn split_pdf_heading_parts(parts: Vec<ExtractionPart>) -> Vec<ExtractionPart> {
         .collect()
 }
 
-#[cfg(feature = "extraction")]
 fn split_pdf_heading_part(part: ExtractionPart) -> Vec<ExtractionPart> {
     let Some(text) = part.text.as_deref() else {
         return vec![part];
@@ -987,39 +881,26 @@ fn split_pdf_heading_part(part: ExtractionPart) -> Vec<ExtractionPart> {
 
     let heading_text = lines[..heading_lines].join("\n");
     let body_text = lines[heading_lines..].join("\n");
-    let Some(range) = part.range else {
-        return vec![part];
-    };
-    let heading_end = range.start + heading_text.len();
-    let body_start = heading_end + 1;
 
     let mut heading = part.clone();
     heading.kind = "heading".to_owned();
     heading.text = Some(heading_text);
-    heading.range = Some(ExtractionTextRange {
-        start: range.start,
-        end: heading_end,
-    });
+    heading.range = None;
 
     let mut body = part;
     body.kind = "paragraph".to_owned();
     body.text = Some(body_text);
-    body.range = Some(ExtractionTextRange {
-        start: body_start,
-        end: range.end,
-    });
+    body.range = None;
 
     vec![heading, body]
 }
 
-#[cfg(feature = "extraction")]
 fn is_pdf_page_number(part: &ExtractionPart) -> bool {
     part.text.as_deref().is_some_and(|text| {
         text.chars().all(|character| character.is_ascii_digit())
     })
 }
 
-#[cfg(feature = "extraction")]
 fn roll_up_pdf_line(
     mut lines: Vec<ExtractionPart>,
     part: ExtractionPart,
@@ -1038,7 +919,6 @@ fn roll_up_pdf_line(
     lines
 }
 
-#[cfg(feature = "extraction")]
 fn roll_up_pdf_paragraph(
     mut paragraphs: Vec<ExtractionPart>,
     part: ExtractionPart,
@@ -1057,7 +937,6 @@ fn roll_up_pdf_paragraph(
     paragraphs
 }
 
-#[cfg(feature = "extraction")]
 fn same_pdf_line(left: &ExtractionPart, right: &ExtractionPart) -> bool {
     let (Some(left_source), Some(right_source)) =
         (&left.provenance, &right.provenance)
@@ -1074,7 +953,6 @@ fn same_pdf_line(left: &ExtractionPart, right: &ExtractionPart) -> bool {
         && (left_geometry.y - right_geometry.y).abs() <= 2.0
 }
 
-#[cfg(feature = "extraction")]
 fn same_pdf_paragraph(left: &ExtractionPart, right: &ExtractionPart) -> bool {
     if left.kind != "paragraph" || right.kind != "paragraph" {
         return false;
@@ -1096,7 +974,6 @@ fn same_pdf_paragraph(left: &ExtractionPart, right: &ExtractionPart) -> bool {
         && (left_geometry.y - right_geometry.y).abs() <= 24.0
 }
 
-#[cfg(feature = "extraction")]
 fn merge_pdf_parts(
     target: &mut ExtractionPart,
     source: ExtractionPart,
@@ -1117,21 +994,19 @@ fn merge_pdf_parts(
 
     if let (Some(target_source), Some(source_source)) =
         (target.provenance.as_mut(), source.provenance)
-    {
-        if let (Some(target_geometry), Some(source_geometry)) =
+        && let (Some(target_geometry), Some(source_geometry)) =
             (target_source.geometry.as_mut(), source_source.geometry)
-        {
-            let x = target_geometry.x.min(source_geometry.x);
-            let y = target_geometry.y.min(source_geometry.y);
-            let right = (target_geometry.x + target_geometry.width)
-                .max(source_geometry.x + source_geometry.width);
-            let bottom = (target_geometry.y + target_geometry.height)
-                .max(source_geometry.y + source_geometry.height);
-            target_geometry.x = x;
-            target_geometry.y = y;
-            target_geometry.width = right - x;
-            target_geometry.height = bottom - y;
-        }
+    {
+        let x = target_geometry.x.min(source_geometry.x);
+        let y = target_geometry.y.min(source_geometry.y);
+        let right = (target_geometry.x + target_geometry.width)
+            .max(source_geometry.x + source_geometry.width);
+        let bottom = (target_geometry.y + target_geometry.height)
+            .max(source_geometry.y + source_geometry.height);
+        target_geometry.x = x;
+        target_geometry.y = y;
+        target_geometry.width = right - x;
+        target_geometry.height = bottom - y;
     }
 }
 
@@ -1152,12 +1027,12 @@ pub async fn extract_file(
 
     let need_metadata = config.return_metadata
         || config.return_content
-        || config.return_part_chunks
+        || config.return_part_segments
         || config.return_parts;
     let need_content = config.return_content
-        || config.return_part_chunks
+        || config.return_part_segments
         || config.return_parts;
-    let need_part_chunks = config.return_part_chunks;
+    let need_part_segments = config.return_part_segments;
 
     let metadata = if need_metadata {
         Some(extract_metadata(file_path)?)
@@ -1177,7 +1052,7 @@ pub async fn extract_file(
     let parts = document.as_ref().and_then(|document| {
         config.return_parts.then(|| {
             let parts = document.parts.clone();
-            if !need_part_chunks {
+            if !need_part_segments {
                 return parts;
             }
 
@@ -1202,7 +1077,7 @@ pub async fn extract_file(
     })
 }
 
-/// Add chunking-derived segments and chunks to text-bearing parts.
+/// Add chunking-derived segments to text-bearing parts.
 fn derive_part_chunking(
     parts: Vec<ExtractionPart>,
     config: Option<&ChunkingConfig>,
@@ -1242,17 +1117,7 @@ fn derive_part_chunking(
                     }
                 })
                 .collect::<Vec<_>>();
-            let chunks = chunks
-                .into_iter()
-                .enumerate()
-                .map(|(index, text)| ExtractionChunk {
-                    index,
-                    text: Some(text.to_owned()),
-                })
-                .collect::<Vec<_>>();
-
             part.segments = Some(segments);
-            part.chunks = Some(chunks);
             part
         })
         .collect()
@@ -1493,14 +1358,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn returns_part_level_chunks_when_chunking_requested()
+    async fn returns_part_level_segments_when_requested()
     -> Result<(), FileExtractionError> {
         let file_path = get_extraction_fixture("text.txt");
         let extraction = extract_file(
             file_path,
             &ExtractionConfig {
                 return_content: true,
-                return_part_chunks: true,
+                return_part_segments: true,
                 return_parts: true,
                 ..Default::default()
             },
@@ -1517,11 +1382,6 @@ mod tests {
             !segments.is_empty()
                 && segments.iter().all(|segment| segment.range.is_some())
         }));
-        assert!(text_part.chunks.as_ref().is_some_and(|chunks| {
-            !chunks.is_empty()
-                && chunks.iter().all(|chunk| chunk.text.is_some())
-        }));
-
         Ok(())
     }
 
@@ -1542,7 +1402,7 @@ mod tests {
 
         assert!(config.return_metadata);
         assert!(!config.return_content);
-        assert!(!config.return_part_chunks);
+        assert!(!config.return_part_segments);
         assert!(config.return_parts);
     }
 

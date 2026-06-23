@@ -12,13 +12,6 @@ use safetensors::{Dtype, SafeTensors};
 use serde::Deserialize;
 use tokenizers::Tokenizer;
 
-use crate::layout::pp_doclayout::{
-    PpDocLayoutRuntime, load_pp_doclayout_runtime,
-};
-use crate::ocr::text_pipeline::{
-    crop_text_region, text_like_detection, useful_ocr_fragment,
-};
-
 const GLM_OCR_REPO_ID: &str = "zai-org/GLM-OCR";
 const GLM_OCR_REVISION: &str = "ca5d8b3e287e52589e37c28385d9655ee4372f9d";
 #[allow(dead_code)]
@@ -161,8 +154,6 @@ pub(crate) struct GlmOcrModel<B: Backend> {
     vision: GlmVisionEncoder<B>,
     #[allow(dead_code)]
     text: GlmTextModel<B>,
-    #[allow(dead_code)]
-    layout: Option<PpDocLayoutRuntime<B>>,
     backend: PhantomData<B>,
 }
 
@@ -289,46 +280,11 @@ where
         self.extract_image(&image, device)
     }
 
-    fn extract_image(
+    pub(crate) fn extract_image(
         &self,
         image: &DynamicImage,
         device: &B::Device,
     ) -> Result<String> {
-        if let Some(layout) = &self.layout {
-            let detections = match layout.detect_image(image, device) {
-                Ok(detections) => detections,
-                Err(error) => {
-                    if std::env::var_os("AKUNA_OCR_DEBUG_LAYOUT").is_some() {
-                        eprintln!("layout detection failed: {error:#}");
-                    }
-                    Vec::new()
-                }
-            };
-            if std::env::var_os("AKUNA_OCR_DEBUG_LAYOUT").is_some() {
-                for detection in &detections {
-                    eprintln!(
-                        "layout label={} score={:.3} bbox={:?}",
-                        detection.label, detection.score, detection.bbox
-                    );
-                }
-            }
-            let mut parts = Vec::new();
-            for detection in detections.into_iter().filter(text_like_detection)
-            {
-                let Ok(crop) = crop_text_region(image, detection.bbox) else {
-                    continue;
-                };
-                let text = self.extract_image_native(&crop, device)?;
-                let text = text.trim();
-                if useful_ocr_fragment(text) {
-                    parts.push(text.to_string());
-                }
-            }
-            if !parts.is_empty() {
-                return Ok(parts.join("\n"));
-            }
-        }
-
         self.extract_image_native(image, device)
     }
 
@@ -377,13 +333,13 @@ where
             &generated,
             GLM_OCR_REPETITION_PENALTY,
         )?;
-        let mut current_position = next_decode_position(&position_ids);
-
         let max_tokens = std::env::var("AKUNA_OCR_MAX_TOKENS")
             .ok()
             .and_then(|value| value.parse::<usize>().ok())
             .unwrap_or(10);
-        for _ in 0..max_tokens {
+        for current_position in
+            (next_decode_position(&position_ids)..).take(max_tokens)
+        {
             if self.config.text_config.eos_token_id.contains(&next_token) {
                 break;
             }
@@ -409,7 +365,6 @@ where
                 &generated,
                 GLM_OCR_REPETITION_PENALTY,
             )?;
-            current_position += 1;
         }
 
         self.tokenizer
@@ -420,25 +375,6 @@ where
 
     pub(crate) fn variant(&self) -> GlmOcrVariant {
         self.variant
-    }
-
-    #[cfg(test)]
-    pub(crate) fn new_for_test(variant: GlmOcrVariant) -> Self
-    where
-        B: Backend<FloatElem = f32>,
-        B::Device: Default,
-    {
-        Self {
-            variant,
-            config: GlmOcrConfig::for_test(),
-            preprocessor: PreprocessorConfig::for_test(),
-            tokenizer: Tokenizer::new(tokenizers::models::bpe::BPE::default()),
-            files: None,
-            vision: GlmVisionEncoder::new_for_test(1, &B::Device::default()),
-            text: GlmTextModel::new_for_test(1, &B::Device::default()),
-            layout: None,
-            backend: PhantomData,
-        }
     }
 }
 
@@ -1428,10 +1364,15 @@ where
     let mut cos = Vec::with_capacity(seq * dims.head_dim);
     let mut sin = Vec::with_capacity(seq * dims.head_dim);
 
-    for index in 0..seq {
+    for ((temporal, height), width) in position_ids[0]
+        .iter()
+        .zip(&position_ids[1])
+        .zip(&position_ids[2])
+    {
+        let positions = [*temporal, *height, *width];
         let mut freqs = Vec::with_capacity(dims.head_dim / 2);
         for (axis, section) in GLM_OCR_MROPE_SECTION.into_iter().enumerate() {
-            let position = position_ids[axis][index] as f32;
+            let position = positions[axis] as f32;
             for offset in 0..section {
                 let frequency_index = freqs.len() + offset;
                 let inv_freq = 1.0_f32
@@ -1636,8 +1577,6 @@ where
     )?;
     let text =
         GlmTextModel::from_weights(&tensors, GLM_OCR_TEXT_DIMS.layers, device)?;
-    let layout = load_pp_doclayout_runtime(device, cache_dir).await.ok();
-
     Ok(GlmOcrModel {
         variant,
         config,
@@ -1646,7 +1585,6 @@ where
         files: Some(files),
         vision,
         text,
-        layout,
         backend: PhantomData,
     })
 }
@@ -2390,9 +2328,8 @@ fn build_single_image_position_ids(
 mod tests {
     use super::*;
     use ahash::AHashMap;
-    use burn_wgpu::{Wgpu, WgpuDevice};
-    use image::{ImageBuffer, ImageFormat, Rgb};
-    use std::io::Cursor;
+    use image::{ImageBuffer, Rgb};
+
     use tokenizers::{AddedToken, models::wordlevel::WordLevel};
 
     #[test]
@@ -2453,7 +2390,8 @@ mod tests {
                 .count(),
             4,
         );
-        let start = i64::try_from(prompt.image_token_range.start).unwrap();
+        let start = i64::try_from(prompt.image_token_range.start)
+            .expect("image token range start should fit i64");
         assert_eq!(
             prompt.position_ids[0][prompt.image_token_range.clone()],
             [start, start, start, start],
@@ -2480,203 +2418,6 @@ mod tests {
     }
 
     #[test]
-    fn vision_patch_embed_forward_returns_hidden_states() {
-        let device = Default::default();
-        let image = ImageBuffer::from_pixel(2, 2, Rgb([255, 0, 128]));
-        let input = preprocess_image(
-            &DynamicImage::ImageRgb8(image),
-            &PreprocessorConfig::for_test(),
-        )
-        .expect("image should preprocess");
-        let patch_embed =
-            GlmVisionPatchEmbed::<burn_cpu::Cpu>::new_for_test(&device);
-
-        let output = patch_embed.forward(&input, &device);
-
-        assert_eq!(
-            output.dims(),
-            [input.patches, GLM_OCR_VISION_DIMS.hidden_size]
-        );
-    }
-
-    #[test]
-    fn rms_norm_forward_preserves_shape() {
-        let device = Default::default();
-        let x = Tensor::<burn_cpu::Cpu, 2>::ones([2, 4], &device);
-        let norm = GlmRmsNorm::<burn_cpu::Cpu>::new_for_test(4, &device);
-
-        let output = norm.forward(x);
-
-        assert_eq!(output.dims(), [2, 4]);
-    }
-
-    #[test]
-    fn vision_block_forward_preserves_hidden_shape() {
-        let device = Default::default();
-        let patches = 4;
-        let block = GlmVisionBlock::<burn_cpu::Cpu>::new_for_test();
-        let x = Tensor::<burn_cpu::Cpu, 2>::ones(
-            [patches, GLM_OCR_VISION_DIMS.hidden_size],
-            &device,
-        );
-
-        let output = block.forward(x, [1, 2, 2]);
-
-        assert_eq!(output.dims(), [patches, GLM_OCR_VISION_DIMS.hidden_size]);
-    }
-
-    #[test]
-    fn full_vision_encoder_forward_returns_image_features() {
-        let device = Default::default();
-        let input = VisionInput {
-            values: vec![0.0; 4 * GLM_OCR_VISION_DIMS.patch_width()],
-            patches: 4,
-            patch_width: GLM_OCR_VISION_DIMS.patch_width(),
-            grid_thw: [1, 2, 2],
-        };
-        let encoder =
-            GlmVisionEncoder::<burn_cpu::Cpu>::new_for_test(2, &device);
-
-        let output = encoder.forward(&input, &device);
-
-        assert_eq!(output.dims(), [1, GLM_OCR_VISION_DIMS.output_hidden_size]);
-    }
-
-    #[test]
-    fn text_decoder_layer_forward_preserves_hidden_shape() {
-        let device = Default::default();
-        let seq = 4;
-        let layer = GlmTextDecoderLayer::<burn_cpu::Cpu>::new_for_test();
-        let x = Tensor::<burn_cpu::Cpu, 2>::ones(
-            [seq, GLM_OCR_TEXT_DIMS.hidden_size],
-            &device,
-        );
-
-        let position_ids =
-            [vec![0, 1, 2, 3], vec![0, 1, 2, 3], vec![0, 1, 2, 3]];
-        let output = layer.forward(x, &position_ids);
-
-        assert_eq!(output.dims(), [seq, GLM_OCR_TEXT_DIMS.hidden_size]);
-    }
-
-    #[ignore = "full vocab matmul is slow on CPU"]
-    #[test]
-    fn text_model_forward_returns_vocab_logits() {
-        let device = Default::default();
-        let token_ids = [1u32, 2, 3];
-        let model = GlmTextModel::<burn_cpu::Cpu>::new_for_test(1, &device);
-        let embeddings = model.embed_token_ids(token_ids.as_slice(), &device);
-
-        let position_ids = [vec![0, 1, 2], vec![0, 1, 2], vec![0, 1, 2]];
-        let output = model.forward_embeddings(embeddings, &position_ids);
-
-        assert_eq!(
-            output.dims(),
-            [token_ids.len(), GLM_OCR_TEXT_DIMS.vocab_size]
-        );
-    }
-
-    #[test]
-    fn image_preprocess_rejects_invalid_bytes() {
-        let model =
-            GlmOcrModel::<Wgpu>::new_for_test(GlmOcrVariant::OnnxCommunity);
-        let device = WgpuDevice::default();
-        let error = model
-            .extract_bytes(b"not an image".as_slice(), &device)
-            .expect_err("invalid image should fail");
-
-        assert!(error.to_string().contains("decode OCR input image"));
-    }
-
-    #[test]
-    fn official_weight_shapes_match_glm_ocr_dimensions() {
-        let shapes = required_weight_shapes();
-
-        assert_eq!(shapes.len(), 24 * 14 + 16 * 10 + 14);
-        assert_eq!(shapes[0].1, vec![1024, 3, 2, 14, 14]);
-        assert!(shapes.iter().any(|(name, shape)| {
-            name == "model.language_model.layers.15.self_attn.o_proj.weight"
-                && shape == &vec![1_536, 2_048]
-        }));
-        assert_eq!(
-            shapes.last().expect("shapes should not be empty").1,
-            vec![1_536, 4_608]
-        );
-    }
-
-    #[test]
-    fn read_bf16_tensor_values_converts_to_f32() {
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&bf16::from_f32(1.5).to_bits().to_le_bytes());
-        bytes.extend_from_slice(&bf16::from_f32(-2.0).to_bits().to_le_bytes());
-        let serialized = safetensors::serialize(
-            [(
-                "tensor",
-                safetensors::tensor::TensorView::new(
-                    Dtype::BF16,
-                    vec![2],
-                    &bytes,
-                )
-                .expect("tensor view should build"),
-            )],
-            None,
-        )
-        .expect("safetensors should serialize");
-        let tensors = SafeTensors::deserialize(&serialized)
-            .expect("safetensors should deserialize");
-
-        let shape = vec![2];
-        let values = read_bf16_tensor_values(&tensors, "tensor", &shape)
-            .expect("tensor should read");
-
-        assert_eq!(values, vec![1.5, -2.0]);
-    }
-
-    #[test]
-    fn patch_embed_weight_transposes_official_layout() {
-        let values = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-
-        let transposed = transpose_flattened_patch_weight(&values, 2, 3);
-
-        assert_eq!(transposed, vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
-    }
-
-    #[test]
-    fn matrix_weight_transpose_reuses_official_layout() {
-        let values = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-
-        let transposed = transpose_flattened_matrix(&values, 2, 3);
-
-        assert_eq!(transposed, vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
-    }
-
-    #[ignore = "downloads GLM OCR safetensors"]
-    #[tokio::test]
-    async fn live_glm_ocr_downloads_model_files() {
-        let device = WgpuDevice::default();
-        let model =
-            load_glm_ocr::<Wgpu>(&device, GlmOcrVariant::OnnxCommunity, None)
-                .await
-                .expect("GLM OCR files should load");
-        let files = model.files.expect("model should record downloaded files");
-
-        assert!(files.weights_path.exists());
-    }
-
-    #[ignore = "downloads and constructs GLM OCR safetensors"]
-    #[tokio::test]
-    async fn live_glm_ocr_constructs_native_weighted_model() {
-        let device = WgpuDevice::default();
-        let model =
-            load_glm_ocr::<Wgpu>(&device, GlmOcrVariant::OnnxCommunity, None)
-                .await
-                .expect("GLM OCR weighted model should construct");
-
-        assert_eq!(model.vision.blocks.len(), GLM_OCR_VISION_DIMS.layers);
-        assert_eq!(model.text.layers.len(), GLM_OCR_TEXT_DIMS.layers);
-    }
-
-    #[test]
     fn last_argmax_returns_max_token_from_last_row() {
         let device = Default::default();
         let logits = Tensor::<burn_cpu::Cpu, 2>::from_data(
@@ -2687,31 +2428,6 @@ mod tests {
         let token = last_argmax(logits).expect("argmax should decode");
 
         assert_eq!(token, 2);
-    }
-
-    #[ignore = "downloads GLM OCR safetensors and runs native inference"]
-    #[tokio::test]
-    async fn live_glm_ocr_extracts_generated_tokens_or_shape_runtime() {
-        let image = ImageBuffer::from_pixel(2, 2, Rgb([255, 255, 255]));
-        let mut bytes = Cursor::new(Vec::new());
-        DynamicImage::ImageRgb8(image)
-            .write_to(&mut bytes, ImageFormat::Png)
-            .expect("test image should encode");
-        let device = WgpuDevice::default();
-        let model =
-            load_glm_ocr::<Wgpu>(&device, GlmOcrVariant::OnnxCommunity, None)
-                .await
-                .expect("GLM OCR weighted model should construct");
-
-        match model.extract_bytes(bytes.get_ref(), &device) {
-            Ok(text) => assert!(!text.is_empty()),
-            Err(error) => assert!(
-                error
-                    .to_string()
-                    .contains("native tensor shape unsupported"),
-                "unexpected OCR runtime error: {error}"
-            ),
-        }
     }
 
     fn prompt_test_tokenizer() -> Tokenizer {

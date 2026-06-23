@@ -42,17 +42,6 @@ pub(crate) fn text_like_detection(detection: &LayoutDetection) -> bool {
     )
 }
 
-pub(crate) fn join_useful_lines(
-    lines: impl IntoIterator<Item = String>,
-) -> String {
-    lines
-        .into_iter()
-        .map(|line| line.trim().to_string())
-        .filter(|line| useful_ocr_fragment(line))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 pub(crate) fn crop_text_region(
     image: &DynamicImage,
     bbox: [f32; 4],

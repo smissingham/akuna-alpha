@@ -365,7 +365,7 @@ impl GraphDbContext for GrafeoDbContext {
     }
 
     fn put_edge(&self, edge: &GraphEdge) -> Result<(), GraphError> {
-        let predicate = edge.predicate.as_str();
+        let predicate = validate_relationship_type(edge.predicate.as_str())?;
         let source_labels = edge
             .source_labels
             .iter()
@@ -430,7 +430,7 @@ impl GraphDbContext for GrafeoDbContext {
     }
 
     fn delete_edge(&self, edge: &GraphEdge) -> Result<(), GraphError> {
-        let predicate = edge.predicate.as_str();
+        let predicate = validate_relationship_type(edge.predicate.as_str())?;
         let source_labels = edge
             .source_labels
             .iter()
@@ -557,6 +557,30 @@ fn sanitize_property_key(key: &str) -> String {
             }
         })
         .collect()
+}
+
+/// Validates a Cypher relationship type before query interpolation.
+fn validate_relationship_type(predicate: &str) -> Result<&str, GraphError> {
+    let mut chars = predicate.chars();
+    let Some(first) = chars.next() else {
+        return Err(GraphError::InvalidEdgePredicate {
+            predicate: predicate.to_owned(),
+        });
+    };
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return Err(GraphError::InvalidEdgePredicate {
+            predicate: predicate.to_owned(),
+        });
+    }
+    if chars.any(|character| {
+        !(character.is_ascii_alphanumeric() || character == '_')
+    }) {
+        return Err(GraphError::InvalidEdgePredicate {
+            predicate: predicate.to_owned(),
+        });
+    }
+
+    Ok(predicate)
 }
 
 fn is_reserved_property(key: &str) -> bool {

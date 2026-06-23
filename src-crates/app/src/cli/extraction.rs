@@ -40,7 +40,7 @@ impl ExtractCommand {
             &akuna_core::extraction::ExtractionConfig {
                 return_metadata: full || self.metadata,
                 return_content: full || self.text,
-                return_part_chunks: false,
+                return_part_segments: false,
                 return_parts: full || self.parts,
                 text: Some(
                     akuna_core::extraction::TextExtractionConfig::default(),

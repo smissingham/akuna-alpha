@@ -38,8 +38,6 @@ onnx-ir = "0.21.0-pre.3"
 protobuf = "3.7.2"
 half = "2.7.1"
 image = { version = "0.25.9", default-features = false, features = ["jpeg", "png", "webp"] }
-ocrs = "0.12.2"
-rten = { version = "0.24.0", default-features = false, features = ["rten_format"] }
 safetensors = "0.7.0"
 
 # chunking
